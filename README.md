@@ -85,3 +85,19 @@ This will:
 - Extend routing logic with a versioned config file and more destinations.
 - Add embeddings + pgvector for stronger dedup and semantic search.
 
+
+
+## Phase 2 extraction runtime
+
+Set these env vars to run scheduled extraction:
+- `PHASE2_EXTRACTION_ENABLED=true`
+- `OPENAI_API_KEY` (required for real provider calls)
+- `OPENAI_MODEL` (default: `gpt-4o-mini`)
+- `OPENAI_TIMEOUT_SECONDS`
+- `OPENAI_MAX_RETRIES`
+- `PHASE2_BATCH_SIZE`
+- `PHASE2_LEASE_SECONDS`
+- `PHASE2_ADMIN_TOKEN` (for internal manual trigger endpoint)
+
+Run one batch manually:
+`python -m app.jobs.run_phase2_extraction`

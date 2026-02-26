@@ -1,16 +1,13 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from ..models import EventMessage, Extraction, RawMessage, RoutingDecision
-from ..schemas import ExtractionJson, RoutingDecisionData, TelegramIngestPayload
-from .event_manager import upsert_event
-from .extraction_agent import ExtractionAgent
-from .routing_engine import route_extraction
+
+from ..models import EventMessage, MessageProcessingState, RawMessage, RoutingDecision
+from ..schemas import RoutingDecisionData, TelegramIngestPayload
 
 
 logger = logging.getLogger("civicquant.pipeline")
@@ -32,19 +29,6 @@ def _get_event_id_for_raw(db: Session, raw_message_id: int) -> int | None:
     return link.event_id if link else None
 
 
-def store_extraction(db: Session, raw_message_id: int, extraction: ExtractionJson, model_name: str) -> int:
-    existing = db.query(Extraction).filter(Extraction.raw_message_id == raw_message_id).one_or_none()
-    if existing is not None:
-        return existing.id
-
-    row = Extraction(
-        raw_message_id=raw_message_id,
-        model_name=model_name,
-        extraction_json=extraction.model_dump(mode="json"),
-    )
-    db.add(row)
-    db.flush()
-    return row.id
 
 
 def store_routing_decision(db: Session, raw_message_id: int, decision: RoutingDecisionData) -> int:
@@ -64,21 +48,11 @@ def store_routing_decision(db: Session, raw_message_id: int, decision: RoutingDe
     db.flush()
     return row.id
 
-
 def process_ingest_payload(
     db: Session,
     payload: TelegramIngestPayload,
     normalized_text: str,
-    extractor: ExtractionAgent | None = None,
 ) -> dict[str, object]:
-    """
-    End-to-end ingest processing for Phase 1:
-    - Insert RawMessage (idempotent)
-    - Extract (stub)
-    - Route (rules)
-    - Event upsert (fingerprint/time-window)
-    - Persist Extraction and RoutingDecision
-    """
     existing = _get_existing_raw(db, payload.source_channel_id, payload.telegram_message_id)
     if existing is not None:
         event_id = _get_event_id_for_raw(db, existing.id)
@@ -116,41 +90,14 @@ def process_ingest_payload(
             "event_action": None,
         }
 
-    extractor = extractor or ExtractionAgent()
-    extraction = extractor.extract(
-        normalized_text=normalized_text,
-        message_time=payload.message_timestamp_utc,
-        source_channel_name=payload.source_channel_name,
-    )
+    db.add(MessageProcessingState(raw_message_id=raw.id, status="pending", attempt_count=0))
+    db.flush()
 
-    extraction_id = store_extraction(db, raw.id, extraction, extractor.model_name)
-
-    decision = route_extraction(extraction)
-    store_routing_decision(db, raw.id, decision)
-
-    event_id = None
-    event_action = None
-    if decision.event_action != "ignore":
-        event_id, event_action = upsert_event(
-            db=db,
-            extraction=extraction,
-            raw_message_id=raw.id,
-            latest_extraction_id=extraction_id,
-        )
-
-    logger.info(
-        "pipeline_done raw_message_id=%s event_id=%s event_action=%s fingerprint=%s priority=%s",
-        raw.id,
-        event_id,
-        event_action,
-        extraction.event_fingerprint,
-        decision.publish_priority,
-    )
+    logger.info("ingest_stored raw_message_id=%s phase2_state=pending", raw.id)
 
     return {
         "status": "created",
         "raw_message_id": raw.id,
-        "event_id": event_id,
-        "event_action": event_action,
+        "event_id": None,
+        "event_action": None,
     }
-

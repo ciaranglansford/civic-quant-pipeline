@@ -4,6 +4,7 @@ from fastapi import FastAPI
 
 from .db import init_db
 from .logging_utils import configure_logging
+from .routers.admin import router as admin_router
 from .routers.ingest import router as ingest_router
 from .schemas import HealthResponse
 
@@ -23,6 +24,7 @@ def create_app() -> FastAPI:
         return HealthResponse(status="ok")
 
     app.include_router(ingest_router)
+    app.include_router(admin_router)
     return app
 
 

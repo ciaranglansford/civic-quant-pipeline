@@ -11,6 +11,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    Index,
 )
 from sqlalchemy.orm import relationship
 
@@ -43,16 +44,50 @@ class RawMessage(Base):
         "RoutingDecision", back_populates="raw_message", uselist=False
     )
     event_links = relationship("EventMessage", back_populates="raw_message")
+    processing_state = relationship("MessageProcessingState", back_populates="raw_message", uselist=False)
+
+
+class MessageProcessingState(Base):
+    __tablename__ = "message_processing_states"
+    __table_args__ = (
+        UniqueConstraint("raw_message_id", name="uq_message_processing_state_raw"),
+        Index("ix_mps_status_lease", "status", "lease_expires_at"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    raw_message_id = Column(Integer, ForeignKey("raw_messages.id", ondelete="CASCADE"), nullable=False)
+    status = Column(String(32), nullable=False, default="pending")
+    attempt_count = Column(Integer, nullable=False, default=0)
+    last_attempted_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    lease_expires_at = Column(DateTime, nullable=True)
+    last_error = Column(Text, nullable=True)
+    processing_run_id = Column(String(64), nullable=True)
+
+    raw_message = relationship("RawMessage", back_populates="processing_state")
+
+
+class ProcessingLock(Base):
+    __tablename__ = "processing_locks"
+
+    lock_name = Column(String(64), primary_key=True)
+    locked_until = Column(DateTime, nullable=False)
+    owner_run_id = Column(String(64), nullable=False)
 
 
 class Extraction(Base):
     __tablename__ = "extractions"
+    __table_args__ = (UniqueConstraint("raw_message_id", name="uq_extraction_raw_message"),)
 
     id = Column(Integer, primary_key=True)
     raw_message_id = Column(
         Integer, ForeignKey("raw_messages.id", ondelete="CASCADE"), nullable=False
     )
     model_name = Column(String(255), nullable=False, default="stub-extractor-v1")
+    prompt_version = Column(String(64), nullable=True)
+    processing_run_id = Column(String(64), nullable=True)
+    llm_raw_response = Column(Text, nullable=True)
+    validated_at = Column(DateTime, nullable=True)
     extraction_json = Column(JSON, nullable=False)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
@@ -134,4 +169,3 @@ class PublishedPost(Base):
     content_hash = Column(String(128), nullable=False, index=True)
 
     event = relationship("Event", back_populates="published_posts")
-
