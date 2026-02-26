@@ -171,3 +171,40 @@ Summarize key JSON schemas and the Postgres storage model used in the Civicquant
   - `raw_messages(source_channel_id, telegram_message_id)`
   - `event_messages(event_id, raw_message_id)`
 
+
+### Phase 2 Validation Rules (ExtractionAgent)
+
+- Parse LLM response as a single JSON object only.
+- Reject payloads with unknown fields.
+- Enforce enum membership for `topic`, `sentiment`, and `breaking_window`.
+- Enforce numeric ranges:
+  - `confidence` in `[0,1]`
+  - `impact_score` in `[0,100]`
+- Persist validation failure reason into processing-state records; do not write invalid extraction rows.
+
+### message_processing_states (Phase 2)
+
+- **Purpose**: Track scheduled extraction status, retries, leases, and run traceability per raw message.
+- **Key columns**:
+  - `id` (PK)
+  - `raw_message_id` (FK -> `raw_messages.id`, unique)
+  - `status` (`pending|in_progress|completed|failed`)
+  - `attempt_count` (integer)
+  - `lease_expires_at` (timestamp, nullable)
+  - `last_attempted_at` (timestamp, nullable)
+  - `completed_at` (timestamp, nullable)
+  - `processing_run_id` (string, nullable)
+  - `last_error` (text, nullable)
+- **Constraints / Indexes**:
+  - Unique on `raw_message_id`.
+  - Indexes on (`status`, `lease_expires_at`) to support 10-minute selector queries.
+
+### extractions traceability extension (Phase 2)
+
+In addition to existing fields, extraction persistence should include:
+- `prompt_version`
+- `processing_run_id`
+- `llm_raw_response`
+- `validated_at`
+
+These fields support replay/debug of model behavior and run-level audits.

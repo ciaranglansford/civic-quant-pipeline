@@ -141,3 +141,31 @@ In Phase 1, routing is purely rules-based. This section documents an optional fu
 - **Footer**:
   - Disclaimers: no investment advice; informational only.
 
+
+## 5. Phase 2 ExtractionAgent Prompt Governance (Execution Contract)
+
+For scheduled backend processing, the ExtractionAgent prompt flow must remain deterministic and auditable.
+
+### Prompt Template Ownership
+
+- Prompt template file is checked into the backend repository and versioned (e.g., `extraction_agent_v1`).
+- Processing code loads template from disk and injects only:
+  - `normalized_text`
+  - `message_time`
+  - `source_channel_name`
+- Each persisted extraction stores the `prompt_version` used.
+
+### Non-negotiable Output Constraints
+
+- Return exactly one JSON object.
+- No markdown, prose, or code fences.
+- No additional keys beyond the extraction schema fields.
+- Enum values must match allowed values exactly.
+- Numeric fields must satisfy defined ranges.
+- `event_fingerprint` must be deterministic and repeatable for equivalent facts.
+
+### Runtime Validation Requirement
+
+- Validation occurs before DB persistence using strict schema parsing.
+- Invalid JSON or schema violations are recorded as failed processing attempts with explicit error reason.
+- Failed attempts are retryable under scheduler policy; completed rows are not reprocessed.
