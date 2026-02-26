@@ -178,3 +178,36 @@ sequenceDiagram
   publisher ->> db: Insert published_posts
 ```
 
+
+## Phase 2 Addendum – Scheduled Extraction Processing (10-minute cadence)
+
+This addendum narrows Phase 2 scope to scheduled backend extraction for already-ingested `raw_messages`.
+
+### Scope
+
+- Read stored Telegram messages every 10 minutes.
+- Select only eligible, not-yet-completed messages.
+- Run `ExtractionAgent` prompt flow using:
+  - `normalized_text`
+  - `message_time`
+  - `source_channel_name`
+- Validate strict JSON response against extraction contract.
+- Persist validated extraction with idempotency and traceability.
+
+### Eligibility and Retry Model
+
+- Eligibility is based on processing state (`pending|failed|in_progress lease expired`) and absence of `completed` state.
+- Selection order is deterministic (`message_timestamp_utc`, then `raw_messages.id`).
+- Re-runs do not duplicate extraction rows for the same `raw_message_id`.
+- Failed rows remain visible with error reason and are retryable in subsequent runs.
+
+### Persistence Expectations
+
+- `event_fingerprint` from validated extraction is stored unchanged and used as canonical dedup key downstream.
+- Processing state records include attempt counters, lease timeout, run ID, and latest error.
+- Extraction rows include traceability fields (`prompt_version`, model metadata, and raw LLM response/audit payload).
+
+### Out of Scope for This Phase 2 Slice
+
+- EvidenceAgent, RoutingAgent, and PublisherAgent feature expansion.
+- Changes to Phase 1 listener ingestion contract except minimal dependencies.

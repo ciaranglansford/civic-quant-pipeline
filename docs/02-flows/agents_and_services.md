@@ -141,3 +141,41 @@ Describe the logical agents and services in the Civicquant pipeline, including i
 - Sends messages via Telegram Bot API.
 - Inserts into `published_posts` table.
 
+
+## Phase 2 ExtractionAgent Contract (Authoritative Behavior)
+
+For scheduled Phase 2 processing, ExtractionAgent execution must follow the repository prompt contract in `plans/llm_usage_and_prompts.md`.
+
+### Required Inputs
+
+- `normalized_text`
+- `message_time`
+- `source_channel_name`
+
+### Required Output Fields (exact; no extra keys)
+
+- `topic`
+- `entities.countries`
+- `entities.orgs`
+- `entities.people`
+- `entities.tickers`
+- `affected_countries_first_order`
+- `market_stats[]`
+- `sentiment`
+- `confidence`
+- `impact_score`
+- `is_breaking`
+- `breaking_window`
+- `event_time`
+- `source_claimed`
+- `summary_1_sentence`
+- `keywords`
+- `event_fingerprint`
+
+### Non-negotiable Runtime Rules
+
+- JSON-only model output.
+- No additional properties.
+- Enum and numeric range validation enforced before persistence.
+- `event_fingerprint` must be deterministic for equivalent input facts.
+- Prompt template is versioned and stored in-repo; each run persists `prompt_version`.

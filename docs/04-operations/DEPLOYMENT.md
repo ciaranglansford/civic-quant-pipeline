@@ -81,3 +81,19 @@ Expected deployment action:
 - Liveness endpoint: `GET /health`.
 - Logging is configured with `logging.basicConfig(level=INFO)` in backend lifecycle and listener module.
 - No built-in metrics or distributed tracing instrumentation.
+
+## Phase 2 Extraction Runtime Configuration
+
+The scheduled extraction processor uses separate environment-driven settings:
+
+- `PHASE2_EXTRACTION_ENABLED` (bool)
+- `PHASE2_BATCH_SIZE` (int)
+- `OPENAI_API_KEY` (secret)
+- `OPENAI_MODEL` (string)
+- `OPENAI_TIMEOUT_SECONDS` (int/float)
+- `OPENAI_MAX_RETRIES` (int)
+
+Deployment notes:
+- Keep secrets externalized (environment or secret manager).
+- Backend API process may run without OpenAI config when Phase 2 processor is disabled.
+- Scheduler process should fail fast with clear error if enabled but required OpenAI settings are missing.

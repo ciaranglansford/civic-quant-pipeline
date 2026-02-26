@@ -97,3 +97,30 @@ Describe how to operate the Civicquant pipeline and how periodic jobs (especiall
   - Initially via log inspection and simple OS tools.
   - Future integration with monitoring stack (Prometheus, Grafana, etc.).
 
+
+## Scheduling – Phase 2 Extraction Processing
+
+### Cadence
+
+- Run every 10 minutes.
+- Example cron:
+  - `*/10 * * * * python -m app.jobs.run_phase2_extraction`
+
+### Job Behavior
+
+- Acquire a single-run lock (DB advisory lock or lock-row equivalent).
+- Select eligible rows from `raw_messages` using processing-state status/lease criteria.
+- Process in bounded batches with configured size.
+- Persist per-message status (`completed`/`failed`) and run summary counts.
+
+### Optional Manual Trigger (Internal)
+
+- Optional endpoint: `POST /admin/process/phase2-extractions`.
+- Must call the same processing service as scheduled job.
+- Should be admin/internal-only and disabled by default unless auth guard is configured.
+
+### Failure Handling and Visibility
+
+- Required structured fields in logs: `processing_run_id`, `raw_message_id`, `status`, `attempt_count`, `prompt_version`.
+- Distinguish error classes: `provider_error`, `validation_error`, `persistence_error`.
+- Overlapping scheduler attempts should log and exit without duplicate processing.
