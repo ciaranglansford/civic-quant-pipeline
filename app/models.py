@@ -106,6 +106,7 @@ class Extraction(Base):
     llm_raw_response = Column(Text, nullable=True)
     validated_at = Column(DateTime, nullable=True)
     payload_json = Column(JSONB_COMPAT, nullable=False)
+    canonical_payload_json = Column(JSONB_COMPAT, nullable=True)
     metadata_json = Column(JSONB_COMPAT, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
@@ -168,6 +169,8 @@ class RoutingDecision(Base):
     publish_priority = Column(String(16), nullable=False)
     requires_evidence = Column(Boolean, nullable=False, default=False)
     event_action = Column(String(16), nullable=False)  # create|update|ignore
+    triage_action = Column(String(16), nullable=True)  # archive|monitor|update|promote
+    triage_rules = Column(JSON, nullable=True)  # list of fired triage rule identifiers
     flags = Column(JSON, nullable=False)  # list of strings
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
@@ -187,3 +190,30 @@ class PublishedPost(Base):
     content_hash = Column(String(128), nullable=False, index=True)
 
     event = relationship("Event", back_populates="published_posts")
+
+
+class EntityMention(Base):
+    __tablename__ = "entity_mentions"
+    __table_args__ = (
+        UniqueConstraint(
+            "raw_message_id",
+            "entity_type",
+            "entity_value",
+            name="uq_entity_mentions_raw_type_value",
+        ),
+        Index("ix_entity_mentions_type_value_time", "entity_type", "entity_value", "event_time"),
+        Index("ix_entity_mentions_topic_time", "topic", "event_time"),
+        Index("ix_entity_mentions_breaking_time", "is_breaking", "event_time"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    entity_type = Column(String(32), nullable=False)  # country|org|person|ticker
+    entity_value = Column(String(255), nullable=False)
+    raw_message_id = Column(
+        Integer, ForeignKey("raw_messages.id", ondelete="CASCADE"), nullable=False
+    )
+    event_id = Column(Integer, ForeignKey("events.id", ondelete="SET NULL"), nullable=True)
+    topic = Column(String(64), nullable=True)
+    is_breaking = Column(Boolean, nullable=True)
+    event_time = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)

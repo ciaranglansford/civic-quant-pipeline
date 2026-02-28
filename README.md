@@ -40,8 +40,9 @@ The refined target-state flow is:
 - Poll-based Telegram listener (`python -m listener.telegram_listener`) that forwards messages to ingest API.
 - Idempotent raw capture into `raw_messages`.
 - Deterministic normalization before extraction.
-- Scheduled/manual phase2 extraction (`python -m app.jobs.run_phase2_extraction`) using OpenAI Responses API with strict schema validation.
-- Deterministic routing + event upsert (`events`, `event_messages`, `routing_decisions`).
+- Scheduled/manual phase2 extraction (`python -m app.jobs.run_phase2_extraction`) using OpenAI Responses API with strict schema validation and prompt template `extraction_agent_v2`.
+- Extraction persistence stores raw validated payload (`payload_json`) and deterministic canonicalized payload (`canonical_payload_json`).
+- Deterministic routing + triage + event upsert (`events`, `event_messages`, `routing_decisions`) with entity indexing (`entity_mentions`).
 - Digest job (`python -m app.jobs.run_digest`) publishing event-based summaries.
 
 ## Component Map

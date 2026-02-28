@@ -42,6 +42,8 @@ def store_routing_decision(db: Session, raw_message_id: int, decision: RoutingDe
         publish_priority=decision.publish_priority,
         requires_evidence=decision.requires_evidence,
         event_action=decision.event_action,
+        triage_action=decision.triage_action,
+        triage_rules=decision.triage_rules,
         flags=decision.flags,
     )
     db.add(row)

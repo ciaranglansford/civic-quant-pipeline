@@ -75,7 +75,7 @@ def test_phase2_processes_message_and_is_idempotent(monkeypatch, client: TestCli
             openai_response_id="resp_test_1",
             latency_ms=42,
             retries=0,
-            raw_text='{"topic":"central_banks","entities":{"countries":["EU"],"orgs":["ECB"],"people":[],"tickers":["EUR"]},"affected_countries_first_order":["EU"],"market_stats":[{"label":"move","value":0.5,"unit":"%","context":"EUR"}],"sentiment":"neutral","confidence":0.9,"impact_score":55,"is_breaking":false,"breaking_window":"none","event_time":"2025-01-01T00:00:00","source_claimed":null,"summary_1_sentence":"ECB signals a policy shift.","keywords":["ECB","EUR"],"event_fingerprint":"fingerprint-1"}',
+            raw_text='{"topic":"central_banks","entities":{"countries":["U.S."],"orgs":[" ECB "],"people":[],"tickers":["eur"]},"affected_countries_first_order":["usa"],"market_stats":[{"label":"move","value":0.5,"unit":"%","context":"EUR"}],"sentiment":"neutral","confidence":0.9,"impact_score":55,"is_breaking":false,"breaking_window":"none","event_time":"2025-01-01T00:00:00","source_claimed":" ECB ","summary_1_sentence":"ECB says policy may shift.","keywords":["ECB","EUR"],"event_fingerprint":"central_banks|2025-01-01|us|ecb|||eur|policy_shift"}',
         )
 
     monkeypatch.setattr(extraction_llm_client.OpenAiExtractionClient, "extract", fake_extract)
@@ -90,7 +90,7 @@ def test_phase2_processes_message_and_is_idempotent(monkeypatch, client: TestCli
     assert r2.status_code == 200
 
     from app.db import SessionLocal
-    from app.models import Extraction, MessageProcessingState, RawMessage
+    from app.models import EntityMention, Extraction, MessageProcessingState, RawMessage, RoutingDecision
 
     with SessionLocal() as db:
         raw = db.query(RawMessage).filter(RawMessage.telegram_message_id == "m2").one()
@@ -103,12 +103,24 @@ def test_phase2_processes_message_and_is_idempotent(monkeypatch, client: TestCli
         assert extraction.impact_score == 55
         assert extraction.confidence == 0.9
         assert extraction.sentiment == "neutral"
-        assert extraction.event_fingerprint == "fingerprint-1"
+        assert extraction.event_fingerprint == "central_banks|2025-01-01|United States|ecb|||eur|policy_shift"
         assert extraction.payload_json["topic"] == "central_banks"
+        assert extraction.payload_json["entities"]["countries"] == ["U.S."]
+        assert extraction.canonical_payload_json is not None
+        assert extraction.canonical_payload_json["entities"]["countries"] == ["United States"]
+        assert extraction.canonical_payload_json["affected_countries_first_order"] == ["United States"]
+        assert extraction.prompt_version == "extraction_agent_v2"
         assert extraction.metadata_json["used_openai"] is True
         assert extraction.metadata_json["openai_model"] == "gpt-4o-mini"
         assert extraction.metadata_json["openai_response_id"] == "resp_test_1"
         assert extraction.metadata_json["latency_ms"] == 42
+        assert extraction.metadata_json["canonicalization_rules"]
+        decision = db.query(RoutingDecision).filter_by(raw_message_id=raw.id).one()
+        assert decision.triage_action in {"monitor", "update", "promote", "archive"}
+        assert isinstance(decision.triage_rules, list)
+        mentions = db.query(EntityMention).filter(EntityMention.raw_message_id == raw.id).all()
+        assert mentions
+        assert any(m.entity_type == "country" and m.entity_value == "United States" for m in mentions)
         states = db.query(MessageProcessingState).all()
         assert any(s.status == "completed" for s in states)
 

@@ -5,7 +5,10 @@ from datetime import datetime, timedelta
 
 
 def test_selector_handles_pending_failed_and_expired_in_progress():
-    os.environ["DATABASE_URL"] = "sqlite+pysqlite:///./test_civicquant.db"
+    db_path = "./test_civicquant_phase2_services.db"
+    if os.path.exists(db_path):
+        os.remove(db_path)
+    os.environ["DATABASE_URL"] = f"sqlite+pysqlite:///{db_path}"
 
     from app.config import get_settings
 

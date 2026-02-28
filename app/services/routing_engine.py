@@ -11,7 +11,13 @@ def _priority_from_impact(impact_score: float, cfg: RoutingConfig) -> str:
     return "none"
 
 
-def route_extraction(extraction: ExtractionJson, cfg: RoutingConfig = DEFAULT_ROUTING_CONFIG) -> RoutingDecisionData:
+def route_extraction(
+    extraction: ExtractionJson,
+    cfg: RoutingConfig = DEFAULT_ROUTING_CONFIG,
+    *,
+    triage_action: str | None = None,
+    triage_rules: list[str] | None = None,
+) -> RoutingDecisionData:
     rules_fired: list[str] = []
 
     store_to = cfg.topic_destinations.get(extraction.topic, ["other_events"])
@@ -46,6 +52,8 @@ def route_extraction(extraction: ExtractionJson, cfg: RoutingConfig = DEFAULT_RO
         publish_priority=publish_priority,  # type: ignore[arg-type]
         requires_evidence=requires_evidence,
         event_action=event_action,  # type: ignore[arg-type]
+        triage_action=triage_action,
+        triage_rules=triage_rules or [],
         flags=flags,
         rules_fired=rules_fired,
     )

@@ -90,6 +90,8 @@ class RoutingDecisionData(BaseModel):
     publish_priority: PublishPriority
     requires_evidence: bool
     event_action: EventAction
+    triage_action: Literal["archive", "monitor", "update", "promote"] | None = None
+    triage_rules: list[str] = Field(default_factory=list)
     flags: list[str] = Field(default_factory=list)
     rules_fired: list[str] = Field(default_factory=list)
 

@@ -11,11 +11,14 @@ from sqlalchemy.orm import Session
 from ..config import Settings, get_settings
 from ..models import Extraction, MessageProcessingState, ProcessingLock, RawMessage
 from ..schemas import ExtractionJson
-from .event_manager import upsert_event
+from .canonicalization import canonicalize_extraction
+from .entity_indexing import index_entities_for_extraction
+from .event_manager import find_candidate_event, upsert_event
 from .extraction_llm_client import OpenAiExtractionClient, ProviderError
 from .extraction_validation import ExtractionValidationError, parse_and_validate_extraction
 from .prompt_templates import render_extraction_prompt
 from .routing_engine import route_extraction
+from .triage_engine import compute_triage_action
 from .ingest_pipeline import store_routing_decision
 
 
@@ -134,7 +137,10 @@ def process_phase2_batch(db: Session, settings: Settings | None = None) -> RunSu
                 )
                 llm_response = client.extract(prompt.prompt_text)
                 parsed = parse_and_validate_extraction(llm_response.raw_text)
-                extraction_model = ExtractionJson.model_validate(parsed)
+                canonicalized_model, canonicalization_rules = canonicalize_extraction(parsed)
+                extraction_model = ExtractionJson.model_validate(canonicalized_model.model_dump(mode="json"))
+                canonical_payload = extraction_model.model_dump(mode="json")
+                raw_payload = parsed
 
                 extraction = db.query(Extraction).filter_by(raw_message_id=raw.id).one_or_none()
                 if extraction is None:
@@ -142,7 +148,7 @@ def process_phase2_batch(db: Session, settings: Settings | None = None) -> RunSu
                         raw_message_id=raw.id,
                         extractor_name=OPENAI_EXTRACTOR_NAME,
                         schema_version=EXTRACTION_SCHEMA_VERSION,
-                        payload_json=parsed,
+                        payload_json=raw_payload,
                     )
                     db.add(extraction)
                 extraction.extractor_name = OPENAI_EXTRACTOR_NAME
@@ -160,7 +166,8 @@ def process_phase2_batch(db: Session, settings: Settings | None = None) -> RunSu
                 extraction.processing_run_id = run_id
                 extraction.llm_raw_response = llm_response.raw_text
                 extraction.validated_at = datetime.utcnow()
-                extraction.payload_json = parsed
+                extraction.payload_json = raw_payload
+                extraction.canonical_payload_json = canonical_payload
                 extraction.metadata_json = {
                     "used_openai": llm_response.used_openai,
                     "openai_model": llm_response.model_name,
@@ -168,18 +175,39 @@ def process_phase2_batch(db: Session, settings: Settings | None = None) -> RunSu
                     "latency_ms": llm_response.latency_ms,
                     "retries": llm_response.retries,
                     "fallback_reason": None,
+                    "canonicalization_rules": canonicalization_rules,
                 }
                 db.flush()
 
-                decision = route_extraction(extraction_model)
+                existing_event = find_candidate_event(db, extraction=extraction_model)
+                triage = compute_triage_action(
+                    extraction_model,
+                    existing_event_id=(existing_event.id if existing_event is not None else None),
+                )
+                decision = route_extraction(
+                    extraction_model,
+                    triage_action=triage.triage_action,
+                    triage_rules=triage.reason_codes,
+                )
+                if triage.triage_action == "archive":
+                    decision.event_action = "ignore"
+                elif triage.triage_action == "update":
+                    decision.event_action = "update"
                 store_routing_decision(db, raw.id, decision)
+                event_id: int | None = None
                 if decision.event_action != "ignore":
-                    upsert_event(
+                    event_id, _ = upsert_event(
                         db=db,
                         extraction=extraction_model,
                         raw_message_id=raw.id,
                         latest_extraction_id=extraction.id,
                     )
+                index_entities_for_extraction(
+                    db,
+                    raw_message_id=raw.id,
+                    event_id=event_id,
+                    extraction=extraction_model,
+                )
 
                 state.status = "completed"
                 state.completed_at = datetime.utcnow()

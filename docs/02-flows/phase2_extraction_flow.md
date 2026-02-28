@@ -25,15 +25,19 @@ Phase2 extraction sits at the Stage 3-5 boundary:
 - Use extractor `extract-and-score-openai-v1`.
 - Call OpenAI Responses API.
 - Parse and strictly validate JSON schema.
+- Prompt template version: `extraction_agent_v2` (with `v1` kept unchanged for reproducibility).
 
 4. Persistence
 - Write typed extraction fields for retrieval.
-- Write full payload in `payload_json`.
-- Write provider telemetry in `metadata_json`.
+- Write raw validated payload in `payload_json`.
+- Write deterministic canonicalized payload in `canonical_payload_json`.
+- Write provider/processing telemetry in `metadata_json`.
 
 5. Downstream deterministic processing
-- Compute routing/triage output.
+- Canonicalize entities/source values deterministically.
+- Compute deterministic triage output (`archive|monitor|update|promote`) and routing output.
 - Create/update event clusters.
+- Index entities to `entity_mentions` for retrieval-ready query paths.
 - Mark processing state `completed` or `failed`.
 
 ## Consumes / Produces
@@ -48,6 +52,7 @@ Phase2 extraction sits at the Stage 3-5 boundary:
 - `extractions` row updates/inserts
 - `routing_decisions` row updates/inserts
 - `events` and `event_messages` updates
+- `entity_mentions` updates
 - `message_processing_states` status transitions
 - phase2 run logs with summary counts
 
@@ -93,7 +98,10 @@ sequenceDiagram
   O-->>P: response
   P->>V: parse_and_validate_extraction(raw_text)
   V-->>P: validated claim payload
-  P->>DB: upsert extractions (typed fields + payload_json + metadata_json)
+  P->>P: canonicalize_extraction(validated payload)
+  P->>P: compute_triage_action(canonical payload)
+  P->>DB: upsert extractions (typed fields + payload_json + canonical_payload_json + metadata_json)
   P->>DB: upsert routing + events + links
+  P->>DB: upsert entity_mentions
   P->>DB: update processing state
 ```

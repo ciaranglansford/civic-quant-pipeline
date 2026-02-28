@@ -13,6 +13,28 @@ from .event_windows import get_event_time_window
 logger = logging.getLogger("civicquant.events")
 
 
+def find_candidate_event(
+    db: Session,
+    *,
+    extraction: ExtractionJson,
+) -> Event | None:
+    event_time = extraction.event_time or datetime.utcnow()
+    window = get_event_time_window(extraction.topic, extraction.is_breaking)
+    start = event_time - window
+    end = event_time + window
+    return (
+        db.query(Event)
+        .filter(
+            Event.event_fingerprint == extraction.event_fingerprint,
+            Event.event_time.isnot(None),
+            Event.event_time >= start,
+            Event.event_time <= end,
+        )
+        .order_by(Event.last_updated_at.desc())
+        .first()
+    )
+
+
 def update_event_from_extraction(event: Event, extraction: ExtractionJson, latest_extraction_id: int | None) -> dict[str, tuple[object | None, object | None]]:
     changes: dict[str, tuple[object | None, object | None]] = {}
 
@@ -53,21 +75,7 @@ def upsert_event(
     latest_extraction_id: int | None = None,
 ) -> tuple[int, str]:
     event_time = extraction.event_time or datetime.utcnow()
-    window = get_event_time_window(extraction.topic, extraction.is_breaking)
-    start = event_time - window
-    end = event_time + window
-
-    candidate = (
-        db.query(Event)
-        .filter(
-            Event.event_fingerprint == extraction.event_fingerprint,
-            Event.event_time.isnot(None),
-            Event.event_time >= start,
-            Event.event_time <= end,
-        )
-        .order_by(Event.last_updated_at.desc())
-        .first()
-    )
+    candidate = find_candidate_event(db, extraction=extraction)
 
     if candidate is None:
         event = Event(

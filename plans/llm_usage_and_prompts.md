@@ -48,6 +48,12 @@ Transform normalized wire bulletins into strict structured claim payloads suitab
 
 ## 2) Prompt and Validation Rules
 
+### Prompt Versioning
+
+- Active prompt template version: `extraction_agent_v2`.
+- `extraction_agent_v1` remains unchanged for reproducibility/auditability.
+- `prompt_version` must be persisted per extraction row.
+
 ### Prompt Constraints
 
 - Return exactly one JSON object.
@@ -70,12 +76,12 @@ Deterministic code must stabilize model outputs before routing, clustering, and 
 
 ### Handoff Inputs
 
-- Validated extraction payload
+- Raw validated extraction payload
 - Message metadata and processing context
 
 ### Handoff Outputs (Deterministic)
 
-- Canonicalized fields used by routing/event logic
+- Canonicalized payload used by routing/event logic
 - Stable triage outcomes (priority/action/flags)
 - Cluster-ready fingerprint and event-time context
 
@@ -105,6 +111,7 @@ Expected:
 ### Verify persisted outputs
 
 - `extractions` contains typed retrieval fields
-- `payload_json` stores full validated extraction
-- `metadata_json` stores provider telemetry and fallback context
+- `payload_json` stores raw validated extraction
+- `canonical_payload_json` stores deterministic canonicalized extraction
+- `metadata_json` stores provider telemetry and canonicalization context
 - failures remain explicit in `message_processing_states.last_error`

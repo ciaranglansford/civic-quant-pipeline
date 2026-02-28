@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 
-PROMPT_VERSION = "extraction_agent_v1"
+PROMPT_VERSION = "extraction_agent_v2"
 _TEMPLATE_PATH = Path(__file__).resolve().parents[1] / "prompts" / f"{PROMPT_VERSION}.txt"
 
 

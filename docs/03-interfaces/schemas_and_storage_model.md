@@ -52,8 +52,21 @@ Define structured claim schema and storage contracts for a Telegram wire-bulleti
 - `validated_at`
 
 #### JSON payloads
-- `payload_json`: full validated extraction object for forward compatibility.
-- `metadata_json`: provider telemetry and fallback context (`used_openai`, model, response id, latency, retries, fallback reason).
+- `payload_json`: raw validated extraction object produced from strict schema validation.
+- `canonical_payload_json`: deterministic canonicalized extraction payload used for triage, clustering, and indexing.
+- `metadata_json`: provider telemetry and processing context (`used_openai`, model, response id, latency, retries, fallback reason, canonicalization rules).
+
+### Routing / Triage Contract (`routing_decisions`)
+
+- Core routing fields:
+  - `store_to`
+  - `publish_priority`
+  - `requires_evidence`
+  - `event_action`
+  - `flags`
+- Deterministic triage fields:
+  - `triage_action` (`archive|monitor|update|promote`)
+  - `triage_rules` (list of deterministic rule identifiers)
 
 ### Raw Capture Contract (`raw_messages`)
 
@@ -66,6 +79,18 @@ Define structured claim schema and storage contracts for a Telegram wire-bulleti
 - Messages are observations.
 - Events are evolving clusters of related observations.
 - Event-level records are the primary downstream indexing/reporting unit.
+
+### Entity Indexing Contract (`entity_mentions`)
+
+- Normalized entity links to message/event context:
+  - `entity_type` (`country|org|person|ticker`)
+  - `entity_value`
+  - `raw_message_id`
+  - `event_id` (nullable)
+  - `topic`
+  - `is_breaking`
+  - `event_time`
+- Canonical country values use full Title Case names (for example `United States`, `United Kingdom`).
 
 ### Reporting Contract (`published_posts`)
 
@@ -83,6 +108,9 @@ Define structured claim schema and storage contracts for a Telegram wire-bulleti
 - `extractions(topic, event_time)`
 - `extractions(topic, event_time, impact_score)`
 - `extractions(event_fingerprint)`
+- `entity_mentions(entity_type, entity_value, event_time)`
+- `entity_mentions(topic, event_time)`
+- `entity_mentions(is_breaking, event_time)`
 - `events(event_fingerprint)`
 - `events(event_time)`
 - `raw_messages(message_timestamp_utc)`
