@@ -154,6 +154,41 @@ def test_phase2_validation_failure_marks_state_failed(monkeypatch, client: TestC
         assert "validation_error" in (failed[-1].last_error or "")
 
 
+def test_phase2_local_incident_is_downgraded_and_raw_payload_preserved(monkeypatch, client: TestClient):
+    client.post("/ingest/telegram", json=_payload("c1", "m4", "AUSTIN, TX: POLICE REPORT MULTIPLE INJURIES"))
+
+    from app.services import extraction_llm_client
+
+    def extract_local_incident(self, prompt_text: str):
+        return extraction_llm_client.LlmResponse(
+            extractor_name="extract-and-score-openai-v1",
+            used_openai=True,
+            model_name="gpt-4o-mini",
+            openai_response_id="resp_test_4",
+            latency_ms=8,
+            retries=0,
+            raw_text='{"topic":"war_security","entities":{"countries":["United States"],"orgs":["Austin Police"],"people":[],"tickers":[]},"affected_countries_first_order":["United States"],"market_stats":[],"sentiment":"negative","confidence":0.9,"impact_score":90,"is_breaking":true,"breaking_window":"15m","event_time":"2025-01-01T00:00:00","source_claimed":"Austin Police","summary_1_sentence":"Multiple people injured in Austin, TX incident.","keywords":["police","incident","injured"],"event_fingerprint":"war_security|2025-01-01|United States|austin police|||incident"}',
+        )
+
+    monkeypatch.setattr(extraction_llm_client.OpenAiExtractionClient, "extract", extract_local_incident)
+    r = client.post("/admin/process/phase2-extractions", headers={"x-admin-token": "secret-admin"})
+    assert r.status_code == 200
+
+    from app.db import SessionLocal
+    from app.models import Extraction, RawMessage, RoutingDecision
+
+    with SessionLocal() as db:
+        raw = db.query(RawMessage).filter(RawMessage.telegram_message_id == "m4").one()
+        extraction = db.query(Extraction).filter_by(raw_message_id=raw.id).one()
+        decision = db.query(RoutingDecision).filter_by(raw_message_id=raw.id).one()
+        assert extraction.payload_json["summary_1_sentence"] == "Multiple people injured in Austin, TX incident."
+        assert extraction.canonical_payload_json["summary_1_sentence"] != ""
+        assert decision.triage_action == "monitor"
+        assert decision.requires_evidence is True
+        assert decision.publish_priority in {"low", "none"}
+        assert "triage:local_incident_downgrade" in (decision.triage_rules or [])
+
+
 def test_phase2_disabled_raises_error(client: TestClient):
     from app.config import Settings
     from app.db import SessionLocal

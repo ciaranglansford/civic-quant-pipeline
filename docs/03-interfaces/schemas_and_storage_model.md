@@ -9,6 +9,9 @@ Define structured claim schema and storage contracts for a Telegram wire-bulleti
 - `confidence`: confidence in extraction/classification quality.
 - `impact_score`: significance of the reported claim if taken at face value.
 - Non-confirmation guarantee: extraction outputs represent reported claims, not verified truth.
+- Stage 1 routing interpretation:
+  - confidence/impact are bounded model signals for deterministic routing, not precise urgency truth.
+  - deterministic score bands are used for triage/routing decisions while raw values are preserved.
 
 ### Extraction Schema (`ExtractionJson`)
 
@@ -54,6 +57,8 @@ Define structured claim schema and storage contracts for a Telegram wire-bulleti
 #### JSON payloads
 - `payload_json`: raw validated extraction object produced from strict schema validation.
 - `canonical_payload_json`: deterministic canonicalized extraction payload used for triage, clustering, and indexing.
+  - may include Stage 1 safety rewrite adjustments to `summary_1_sentence` for high-risk unattributed phrasing.
+  - does not overwrite or mutate `payload_json`.
 - `metadata_json`: provider telemetry and processing context (`used_openai`, model, response id, latency, retries, fallback reason, canonicalization rules).
 
 ### Routing / Triage Contract (`routing_decisions`)
@@ -67,6 +72,7 @@ Define structured claim schema and storage contracts for a Telegram wire-bulleti
 - Deterministic triage fields:
   - `triage_action` (`archive|monitor|update|promote`)
   - `triage_rules` (list of deterministic rule identifiers)
+    - includes score-band rules, related-update/repeat downgrade rules, burst-cap rules, and local incident overrides when fired.
 
 ### Raw Capture Contract (`raw_messages`)
 

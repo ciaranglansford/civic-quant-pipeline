@@ -89,6 +89,14 @@ Deterministic code must stabilize model outputs before routing, clustering, and 
 
 - Equivalent facts should preserve stable `event_fingerprint` behavior.
 - Triage outcomes must be reproducible for same validated inputs/config.
+- Confidence/impact are treated as bounded model signals in deterministic routing.
+  - Raw values remain persisted unchanged for auditability.
+  - Stage 1 routing decisions use deterministic score bands and novelty/material-change gates.
+  - Repetitive low-delta bursts are downgraded by deterministic burst-cap rules.
+  - Local domestic incident patterns are capped to monitor-or-lower with evidence-required override.
+- Summary safety guardrail is deterministic post-processing in canonical payload only.
+  - `payload_json` (raw validated extraction) is not rewritten.
+  - `canonical_payload_json` may apply minimal high-risk attribution safety rewrites.
 
 ## 4) Local Validation Workflow
 

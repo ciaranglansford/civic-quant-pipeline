@@ -18,7 +18,13 @@ from .extraction_llm_client import OpenAiExtractionClient, ProviderError
 from .extraction_validation import ExtractionValidationError, parse_and_validate_extraction
 from .prompt_templates import render_extraction_prompt
 from .routing_engine import route_extraction
-from .triage_engine import compute_triage_action
+from .triage_engine import (
+    CandidateEventContext,
+    TriageContext,
+    compute_triage_action,
+    impact_band,
+    entity_signature,
+)
 from .ingest_pipeline import store_routing_decision
 
 
@@ -87,6 +93,115 @@ def _release_lock(db: Session, run_id: str) -> None:
     if lock and lock.owner_run_id == run_id:
         lock.locked_until = datetime.utcnow()
         db.flush()
+
+
+def _payload_for_extraction_row(row: Extraction) -> dict:
+    payload = row.canonical_payload_json or row.payload_json or {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _entities_from_payload(payload: dict) -> set[str]:
+    entities = payload.get("entities") if isinstance(payload, dict) else {}
+    if not isinstance(entities, dict):
+        entities = {}
+    out: set[str] = set()
+    for key in ("countries", "orgs", "people"):
+        values = entities.get(key, [])
+        if isinstance(values, list):
+            for value in values:
+                if isinstance(value, str) and value.strip():
+                    out.add(f"{key[:-1]}:{value.strip().lower()}")
+    return out
+
+
+def _summary_tags_from_text(summary: str) -> set[str]:
+    normalized = summary.lower()
+    tags: set[str] = set()
+    if any(token in normalized for token in ("condemn", "concern", "urge", "calls for", "unacceptable", "warn", "respond")):
+        tags.add("reaction")
+    if any(token in normalized for token in ("strike", "attack", "launched", "killed", "injured", "casualties", "missile", "troops", "explosion")):
+        tags.add("operational")
+    return tags
+
+
+def _source_class_from_payload(payload: dict) -> str:
+    source = str(payload.get("source_claimed") or "").lower()
+    summary = str(payload.get("summary_1_sentence") or "").lower()
+    combined = f"{source} {summary}"
+    if any(token in combined for token in ("police", "ministry", "official", "military", "agency", "spokesperson", "according to")):
+        return "authority"
+    if any(token in combined for token in ("commentary", "analyst", "opinion", "urges", "condemns", "concerned")):
+        return "commentary"
+    return "unknown"
+
+
+def _candidate_event_context(db: Session, existing_event) -> CandidateEventContext | None:
+    if existing_event is None or existing_event.latest_extraction_id is None:
+        return None
+    latest = db.query(Extraction).filter_by(id=existing_event.latest_extraction_id).one_or_none()
+    if latest is None:
+        return None
+    payload = _payload_for_extraction_row(latest)
+    summary = str(payload.get("summary_1_sentence") or "")
+    impact_val = latest.impact_score if latest.impact_score is not None else float(payload.get("impact_score") or 0.0)
+    return CandidateEventContext(
+        impact_band=impact_band(float(impact_val)),
+        entities=_entities_from_payload(payload),
+        summary_tags=_summary_tags_from_text(summary),
+        source_class=_source_class_from_payload(payload),
+    )
+
+
+def _recent_related_rows(
+    db: Session,
+    *,
+    extraction_model: ExtractionJson,
+    raw_message_id: int,
+    now_time: datetime,
+) -> list[Extraction]:
+    start = now_time - timedelta(minutes=15)
+    end = now_time
+    return (
+        db.query(Extraction)
+        .filter(
+            Extraction.raw_message_id != raw_message_id,
+            Extraction.topic == extraction_model.topic,
+            Extraction.created_at >= start,
+            Extraction.created_at <= end,
+        )
+        .order_by(Extraction.created_at.asc())
+        .all()
+    )
+
+
+def _burst_low_delta_prior_count(
+    extraction_model: ExtractionJson,
+    recent_rows: list[Extraction],
+) -> tuple[bool, int]:
+    current_entities = entity_signature(extraction_model)
+    current_band_rank = {"low": 0, "medium": 1, "high": 2, "critical": 3}[impact_band(extraction_model.impact_score)]
+    prior_entity_union: set[str] = set()
+    qualifying = 0
+    soft_related_match = False
+
+    for row in recent_rows:
+        payload = _payload_for_extraction_row(row)
+        row_fp = str(payload.get("event_fingerprint") or row.event_fingerprint or "")
+        row_entities = _entities_from_payload(payload)
+        overlap = len(current_entities & row_entities)
+        related = (row_fp and row_fp == extraction_model.event_fingerprint) or overlap >= 2
+        if not related:
+            continue
+        soft_related_match = True
+        prior_entity_union |= row_entities
+        row_impact = row.impact_score if row.impact_score is not None else float(payload.get("impact_score") or 0.0)
+        row_band_rank = {"low": 0, "medium": 1, "high": 2, "critical": 3}[impact_band(float(row_impact))]
+        impact_not_increasing = current_band_rank <= row_band_rank
+        no_new_entities = len(current_entities - prior_entity_union) == 0
+        if impact_not_increasing and no_new_entities:
+            qualifying += 1
+
+    return soft_related_match, qualifying
 
 
 def process_phase2_batch(db: Session, settings: Settings | None = None) -> RunSummary:
@@ -180,9 +295,23 @@ def process_phase2_batch(db: Session, settings: Settings | None = None) -> RunSu
                 db.flush()
 
                 existing_event = find_candidate_event(db, extraction=extraction_model)
+                candidate_context = _candidate_event_context(db, existing_event)
+                now_time = raw.message_timestamp_utc or datetime.utcnow()
+                recent = _recent_related_rows(
+                    db,
+                    extraction_model=extraction_model,
+                    raw_message_id=raw.id,
+                    now_time=now_time,
+                )
+                soft_related, burst_prior_count = _burst_low_delta_prior_count(extraction_model, recent)
                 triage = compute_triage_action(
                     extraction_model,
-                    existing_event_id=(existing_event.id if existing_event is not None else None),
+                    context=TriageContext(
+                        existing_event_id=(existing_event.id if existing_event is not None else None),
+                        candidate_event=candidate_context,
+                        soft_related_match=soft_related,
+                        burst_low_delta_prior_count=burst_prior_count,
+                    ),
                 )
                 decision = route_extraction(
                     extraction_model,
@@ -191,7 +320,7 @@ def process_phase2_batch(db: Session, settings: Settings | None = None) -> RunSu
                 )
                 if triage.triage_action == "archive":
                     decision.event_action = "ignore"
-                elif triage.triage_action == "update":
+                elif triage.triage_action == "update" and existing_event is not None:
                     decision.event_action = "update"
                 store_routing_decision(db, raw.id, decision)
                 event_id: int | None = None

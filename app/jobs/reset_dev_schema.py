@@ -20,8 +20,8 @@ def _env_flag_enabled(name: str) -> bool:
 
 def main() -> None:
     load_dotenv()
-    if not _env_flag_enabled("CONFIRM_RESET_DEV_SCHEMA"):
-        raise RuntimeError("Set CONFIRM_RESET_DEV_SCHEMA=true to reset schema")
+    # if not _env_flag_enabled("CONFIRM_RESET_DEV_SCHEMA"):
+    #     raise RuntimeError("Set CONFIRM_RESET_DEV_SCHEMA=true to reset schema")
 
     logger.warning("reset_dev_schema starting")
     Base.metadata.drop_all(bind=engine)

@@ -66,11 +66,14 @@ For operational execution details, see:
 ### Stage 4: Deterministic Post-Processing / Triage
 - Responsible module/job:
   - `app/services/routing_engine.py`
+  - `app/services/triage_engine.py`
+  - `app/services/canonicalization.py`
   - `app/services/ingest_pipeline.py` (routing persistence)
 - Local command:
   - executed inside phase2 batch
 - Observable outputs:
   - DB: `routing_decisions`
+  - canonical summary safety changes in `extractions.canonical_payload_json` (raw payload unchanged)
 
 ### Stage 5: Event Clustering
 - Responsible module/job:
@@ -132,6 +135,9 @@ For operational execution details, see:
 - Why: stabilize AI outputs and reduce noisy actioning.
 - Consumes: extraction payload.
 - Produces: deterministic triage/routing outcomes.
+  - Score bands are used for routing decisions (`confidence`/`impact_score` remain raw persisted model signals).
+  - Repetitive low-delta follow-ons are downgraded with deterministic burst suppression.
+  - Local domestic incident patterns are capped to monitor-or-lower and forced evidence-required.
 
 ### 5) Event Clustering
 - What: cluster repeated/incremental/contradictory observations into evolving event records.

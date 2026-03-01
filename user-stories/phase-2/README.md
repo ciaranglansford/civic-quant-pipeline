@@ -23,6 +23,10 @@ This folder contains narrowly-scoped, implementation-ordered stories for the Pha
 19. `BE-16` deferred enrichment selection hooks
 20. `BE-17` event-level scheduled reporting readiness checks
 21. `OPS-04` stage-based runbook and verification workflow
+22. `BE-18` deterministic triage calibration for first-seen versus follow-on bulletins
+23. `BE-19` related-bulletin convergence refinement without collapsing observations
+24. `BE-20` summary semantic safety guardrails for extraordinary claims
+25. `BE-21` local domestic incident routing override
 
 
 ## Implementation status

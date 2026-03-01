@@ -35,8 +35,14 @@ Phase2 extraction sits at the Stage 3-5 boundary:
 
 5. Downstream deterministic processing
 - Canonicalize entities/source values deterministically.
+- Apply deterministic summary semantic safety rewrite in canonical payload only when high-risk claim language lacks attribution.
 - Compute deterministic triage output (`archive|monitor|update|promote`) and routing output.
+  - Use score bands (`impact_band`, `confidence_band`) for routing decisions without mutating raw scores.
+  - Apply novelty/material-change gates to downgrade repetitive low-delta follow-ons.
+  - Apply burst suppression caps in short windows for highly similar related messages.
+  - Apply narrow local domestic incident downgrade and evidence-required override.
 - Create/update event clusters.
+  - Stage 1 keeps exact fingerprint+window association as the only event-linking path.
 - Index entities to `entity_mentions` for retrieval-ready query paths.
 - Mark processing state `completed` or `failed`.
 

@@ -5,6 +5,19 @@ Implement the remaining backend stories in strict pipeline order, using docs + u
 Already-implemented stories (BE-06..BE-10, INF/OPS baseline, typed extraction persistence) remain unchanged unless needed for extension.
 This plan implements the missing/partial slices: BE-11, BE-12, BE-13, BE-14, BE-15, DB-03, BE-16, BE-17 plus required tests and targeted docs updates required by those stories.
 
+## Stage 1 Calibration Pass (Implemented)
+- Deterministic triage now treats model confidence/impact as bounded signals, not direct urgency truth.
+- Score-band based routing calibration is applied without mutating stored raw extraction scores.
+- Repetitive low-delta bursts are downgraded via deterministic novelty/material-change and burst-cap rules.
+- Soft-related checks are used for triage downgrade context only; Stage 1 keeps exact event association unchanged.
+- High-risk unattributed summaries are safety-rewritten in canonical payload only; raw validated payload remains untouched.
+- Local domestic incident patterns are downgraded and forced evidence-required without taxonomy redesign.
+
+## Stage 2 Deferred (Not in this pass)
+- Prompt-level summary phrasing constraints (for example, prompt v3) if Stage 1 deterministic guardrails remain insufficient.
+- Optional taxonomy refinements for domestic incident handling.
+- Optional soft-related event association experiments with strict safety gates and measured rollback plan.
+
 ## Scope Lock (What will be implemented)
 - In scope:
   - Deterministic wire normalization deepening.

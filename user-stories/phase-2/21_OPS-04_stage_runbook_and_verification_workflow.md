@@ -36,6 +36,11 @@
   * deferred enrichment,
   * scheduled reporting.
 * Documentation explicitly preserves semantic guardrails for confidence/impact and non-truth-adjudication.
+* Verification workflow includes Stage 1 deterministic calibration checks:
+  * repetitive follow-on bulletins show downgrade behavior with triage rule IDs,
+  * local domestic incident patterns cap urgency and force evidence routing,
+  * high-risk unattributed summaries are safety-rewritten in canonical payload only,
+  * raw vs canonical payload separation remains auditable.
 
 #### Out-of-scope
 
