@@ -128,3 +128,36 @@ def test_local_domestic_incident_downgrades_urgency():
     )
     assert out.triage_action == "monitor"
     assert "triage:local_incident_downgrade" in out.reason_codes
+
+
+def test_soft_related_new_event_with_prior_low_delta_is_downgraded():
+    extraction = _extraction(
+        impact=75.0,
+        confidence=0.8,
+        breaking=True,
+        summary="Foreign ministry warns of market imbalance.",
+        source_claimed="Market News Feed",
+        countries=["Russia"],
+        keywords=["Strait of Hormuz", "oil", "gas"],
+    )
+    second = compute_triage_action(
+        extraction,
+        context=TriageContext(
+            existing_event_id=None,
+            soft_related_match=True,
+            burst_low_delta_prior_count=1,
+        ),
+    )
+    third = compute_triage_action(
+        extraction,
+        context=TriageContext(
+            existing_event_id=None,
+            soft_related_match=True,
+            burst_low_delta_prior_count=2,
+        ),
+    )
+    assert second.triage_action == "update"
+    assert "triage:soft_related_downgrade" in second.reason_codes
+    assert "triage:burst_cap_update" in second.reason_codes
+    assert third.triage_action == "monitor"
+    assert "triage:burst_cap_monitor" in third.reason_codes

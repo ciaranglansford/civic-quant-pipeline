@@ -189,6 +189,54 @@ def test_phase2_local_incident_is_downgraded_and_raw_payload_preserved(monkeypat
         assert "triage:local_incident_downgrade" in (decision.triage_rules or [])
 
 
+def test_phase2_burst_downgrades_same_source_keyword_overlap(monkeypatch, client: TestClient):
+    client.post("/ingest/telegram", json=_payload("c1", "m5", "RUSSIAN FOREIGN MINISTRY ON HORMUZ NAVIGATION AND OIL/GAS"))
+    client.post("/ingest/telegram", json=_payload("c1", "m6", "RUSSIAN FM: HORMUZ STOPPAGE MAY IMBALANCE OIL AND GAS"))
+    client.post("/ingest/telegram", json=_payload("c1", "m7", "RUSSIAN FM SAYS HORMUZ NAVIGATION IMPACTS OIL GAS MARKETS"))
+
+    from app.services import extraction_llm_client
+
+    payloads = [
+        '{"topic":"commodities","entities":{"countries":["Russia"],"orgs":[],"people":[],"tickers":[]},"affected_countries_first_order":["Russia"],"market_stats":[],"sentiment":"negative","confidence":0.8,"impact_score":75,"is_breaking":true,"breaking_window":"15m","event_time":"2025-01-01T00:00:00","source_claimed":"Market News Feed","summary_1_sentence":"Russian Foreign Ministry warns Hormuz navigation stoppage may imbalance oil and gas markets.","keywords":["Strait of Hormuz","oil","gas","Russia"],"event_fingerprint":"RUSSIAN_FOREIGN_MINISTRY_STRAIT_OF_HORMUZ_IMPACT"}',
+        '{"topic":"commodities","entities":{"countries":["Russia"],"orgs":["Russian Foreign Ministry"],"people":[],"tickers":[]},"affected_countries_first_order":["Russia"],"market_stats":[],"sentiment":"negative","confidence":0.8,"impact_score":75,"is_breaking":true,"breaking_window":"15m","event_time":"2025-01-01T00:00:01","source_claimed":"Market News Feed","summary_1_sentence":"The Russian Foreign Ministry claims stoppage of navigation via Hormuz may imbalance global oil and gas markets.","keywords":["Strait of Hormuz","oil","gas","navigation"],"event_fingerprint":"f2"}',
+        '{"topic":"commodities","entities":{"countries":["Russia"],"orgs":["Russian Foreign Ministry"],"people":[],"tickers":[]},"affected_countries_first_order":["Russia"],"market_stats":[],"sentiment":"negative","confidence":0.8,"impact_score":75,"is_breaking":true,"breaking_window":"15m","event_time":"2025-01-01T00:00:02","source_claimed":"Market News Feed","summary_1_sentence":"Russian Foreign Ministry says Hormuz navigation disruption may create oil and gas imbalances.","keywords":["Strait of Hormuz","oil","gas","navigation"],"event_fingerprint":"f3"}',
+    ]
+    idx = {"value": 0}
+
+    def extract_seq(self, prompt_text: str):
+        i = idx["value"]
+        idx["value"] += 1
+        return extraction_llm_client.LlmResponse(
+            extractor_name="extract-and-score-openai-v1",
+            used_openai=True,
+            model_name="gpt-4o-mini",
+            openai_response_id=f"resp_burst_{i}",
+            latency_ms=9,
+            retries=0,
+            raw_text=payloads[i],
+        )
+
+    monkeypatch.setattr(extraction_llm_client.OpenAiExtractionClient, "extract", extract_seq)
+    r = client.post("/admin/process/phase2-extractions", headers={"x-admin-token": "secret-admin"})
+    assert r.status_code == 200
+
+    from app.db import SessionLocal
+    from app.models import RawMessage, RoutingDecision
+
+    with SessionLocal() as db:
+        ids = [
+            db.query(RawMessage).filter(RawMessage.telegram_message_id == mid).one().id
+            for mid in ("m5", "m6", "m7")
+        ]
+        decisions = [db.query(RoutingDecision).filter_by(raw_message_id=rid).one() for rid in ids]
+        assert decisions[0].triage_action == "promote"
+        assert decisions[1].triage_action == "update"
+        assert decisions[2].triage_action == "monitor"
+        assert "triage:soft_related_downgrade" in (decisions[1].triage_rules or [])
+        assert "triage:burst_cap_update" in (decisions[1].triage_rules or [])
+        assert "triage:burst_cap_monitor" in (decisions[2].triage_rules or [])
+
+
 def test_phase2_disabled_raises_error(client: TestClient):
     from app.config import Settings
     from app.db import SessionLocal

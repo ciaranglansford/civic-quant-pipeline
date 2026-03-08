@@ -266,7 +266,7 @@ def compute_triage_action(
         reasons.append("triage:soft_related_match")
 
     # Prevent over-promotion for soft-related low-delta messages even when fingerprint changes.
-    if context.existing_event_id is None and context.soft_related_match and not materially_new:
+    if context.existing_event_id is None and context.soft_related_match and context.burst_low_delta_prior_count >= 1:
         reasons.append("triage:soft_related_downgrade")
         novelty_state = "repeat_low_delta"
 

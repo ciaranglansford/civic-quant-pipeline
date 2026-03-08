@@ -114,6 +114,23 @@ def _entities_from_payload(payload: dict) -> set[str]:
     return out
 
 
+def _keywords_from_payload(payload: dict) -> set[str]:
+    values = payload.get("keywords", []) if isinstance(payload, dict) else []
+    out: set[str] = set()
+    if isinstance(values, list):
+        for value in values:
+            if isinstance(value, str) and value.strip():
+                out.add(value.strip().lower())
+    return out
+
+
+def _source_from_payload(payload: dict) -> str:
+    value = payload.get("source_claimed") if isinstance(payload, dict) else None
+    if isinstance(value, str):
+        return value.strip().lower()
+    return ""
+
+
 def _summary_tags_from_text(summary: str) -> set[str]:
     normalized = summary.lower()
     tags: set[str] = set()
@@ -179,6 +196,8 @@ def _burst_low_delta_prior_count(
     recent_rows: list[Extraction],
 ) -> tuple[bool, int]:
     current_entities = entity_signature(extraction_model)
+    current_keywords = {k.strip().lower() for k in extraction_model.keywords if k and k.strip()}
+    current_source = (extraction_model.source_claimed or "").strip().lower()
     current_band_rank = {"low": 0, "medium": 1, "high": 2, "critical": 3}[impact_band(extraction_model.impact_score)]
     prior_entity_union: set[str] = set()
     qualifying = 0
@@ -188,8 +207,12 @@ def _burst_low_delta_prior_count(
         payload = _payload_for_extraction_row(row)
         row_fp = str(payload.get("event_fingerprint") or row.event_fingerprint or "")
         row_entities = _entities_from_payload(payload)
+        row_keywords = _keywords_from_payload(payload)
+        row_source = _source_from_payload(payload)
         overlap = len(current_entities & row_entities)
-        related = (row_fp and row_fp == extraction_model.event_fingerprint) or overlap >= 2
+        keyword_overlap = len(current_keywords & row_keywords)
+        same_source_keyword_overlap = bool(current_source and row_source and current_source == row_source and keyword_overlap >= 2)
+        related = (row_fp and row_fp == extraction_model.event_fingerprint) or overlap >= 2 or same_source_keyword_overlap
         if not related:
             continue
         soft_related_match = True
@@ -198,7 +221,7 @@ def _burst_low_delta_prior_count(
         row_band_rank = {"low": 0, "medium": 1, "high": 2, "critical": 3}[impact_band(float(row_impact))]
         impact_not_increasing = current_band_rank <= row_band_rank
         no_new_entities = len(current_entities - prior_entity_union) == 0
-        if impact_not_increasing and no_new_entities:
+        if impact_not_increasing and (no_new_entities or same_source_keyword_overlap):
             qualifying += 1
 
     return soft_related_match, qualifying
@@ -296,7 +319,7 @@ def process_phase2_batch(db: Session, settings: Settings | None = None) -> RunSu
 
                 existing_event = find_candidate_event(db, extraction=extraction_model)
                 candidate_context = _candidate_event_context(db, existing_event)
-                now_time = raw.message_timestamp_utc or datetime.utcnow()
+                now_time = datetime.utcnow()
                 recent = _recent_related_rows(
                     db,
                     extraction_model=extraction_model,

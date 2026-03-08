@@ -27,6 +27,10 @@ This folder contains narrowly-scoped, implementation-ordered stories for the Pha
 23. `BE-19` related-bulletin convergence refinement without collapsing observations
 24. `BE-20` summary semantic safety guardrails for extraordinary claims
 25. `BE-21` local domestic incident routing override
+26. `BE-22` deterministic promote-throttle for high-frequency source/topic bursts
+27. `BE-23` pronoun rewrite safety and grammar guardrails
+28. `BE-24` production quality scorecard and threshold checks
+29. `OPS-05` calibration regression verification workflow
 
 
 ## Implementation status
