@@ -95,6 +95,12 @@ The digest remains no-interpretation and informational only.
 
 - Adapters consume canonical digest and/or rendered canonical text artifact.
 - Telegram adapter is implemented now.
+- Telegram presentation is adapter-owned and destination-specific:
+  - bold `News Digest` title,
+  - compact metadata block (window/events/topics),
+  - deterministic `Top developments` section,
+  - bold topic section headers with compact bullets,
+  - understated `- Not investment advice.` footer.
 - X adapter exists only as placeholder/deferred (not production publishing support).
 - Channel constraints do not leak into canonical model/builder/renderer.
 

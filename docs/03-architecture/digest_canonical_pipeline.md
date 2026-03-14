@@ -81,6 +81,15 @@ Transitional compatibility shims:
   - digest semantics,
   - canonical hashing policy.
 
+### Telegram Presentation Boundary
+
+- Canonical text artifact remains plain, deterministic, and destination-agnostic.
+- Telegram adapter renders a Telegram-specific HTML payload from canonical digest inputs.
+- Telegram presentation enhancements (title, compact metadata, top developments, section styling, footer) are adapter-only concerns.
+- Top developments are selected deterministically from digest items using:
+  - `last_updated_at` descending, then `event_id` ascending.
+- Telegram payload hash is computed from the final Telegram-rendered payload and stored in `published_posts.content_hash`.
+
 ## Idempotency / Rerun Behavior
 
 - Artifact identity is canonical hash of canonical text.

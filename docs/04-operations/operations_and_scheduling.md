@@ -64,6 +64,7 @@ Implementation ownership:
   - `python -m app.jobs.run_digest`
 - Expected outputs:
   - canonical artifact persisted in `digest_artifacts`
+  - Telegram adapter builds destination-specific formatted payload (HTML) from canonical digest
   - per-destination publish outcomes in `published_posts`
   - digest publish/skip/retry logs per destination
 
@@ -109,6 +110,9 @@ Use preserve-raw reprocess for prompt/routing/event-logic iteration. Use full re
 
 ### Digest Rerun / Idempotency Behavior
 - Canonical artifact is persisted before destination publish attempts.
+- Telegram-specific payload formatting does not change canonical artifact semantics.
+- Telegram "Top developments" list is deterministic:
+  - `last_updated_at` descending, then `event_id` ascending.
 - If a destination already has `published` status for an artifact, rerun skips that destination.
 - If a destination has `failed` status for an artifact, rerun retries that destination.
 - Telegram is implemented now via adapter.

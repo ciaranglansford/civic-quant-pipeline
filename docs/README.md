@@ -1,7 +1,7 @@
 # Civicquant Docs Knowledge Base
 
 This `/docs` directory is organized as a staged, retrieval-friendly knowledge base for a Telegram wire-bulletin intelligence pipeline.
-For canonical digest ownership, adapter boundaries, and local schema adoption/reset guidance, start with [`03-architecture/digest_canonical_pipeline.md`](./03-architecture/digest_canonical_pipeline.md) and [`04-operations/operations_and_scheduling.md`](./04-operations/operations_and_scheduling.md).
+For canonical digest ownership, adapter boundaries (including Telegram-specific presentation formatting), and local schema adoption/reset guidance, start with [`03-architecture/digest_canonical_pipeline.md`](./03-architecture/digest_canonical_pipeline.md) and [`04-operations/operations_and_scheduling.md`](./04-operations/operations_and_scheduling.md).
 
 ## Structure
 
