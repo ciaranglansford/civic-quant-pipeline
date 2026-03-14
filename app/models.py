@@ -125,6 +125,8 @@ class Event(Base):
     breaking_window = Column(String(16), nullable=True)
     event_time = Column(DateTime, nullable=True, index=True)
     last_updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    is_published_telegram = Column(Boolean, nullable=False, default=False, index=True)
+    is_published_twitter = Column(Boolean, nullable=False, default=False, index=True)
 
     latest_extraction_id = Column(
         Integer, ForeignKey("extractions.id", ondelete="SET NULL"), nullable=True

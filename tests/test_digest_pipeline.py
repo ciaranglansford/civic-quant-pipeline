@@ -205,7 +205,11 @@ def test_renderer_is_byte_stable_for_identical_canonical_digest():
 
             assert text_a == text_b
             assert "generated" not in text_a.lower()
+            assert text_a.startswith("Window 2026-01-01 00:00:00 UTC to 2026-01-01 04:00:00 UTC")
             assert "2026-01-01 00:00:00 UTC" in text_a
+            assert "impact=" not in text_a
+            assert "corroboration=" not in text_a
+            assert "informational only" not in text_a.lower()
     finally:
         engine.dispose()
         if os.path.exists(db_path):
@@ -239,7 +243,7 @@ def test_orchestrator_persists_artifact_before_publish_attempt():
                 fingerprint="a1",
                 topic="fx",
                 summary="Artifact first",
-                impact=10.0,
+                impact=40.0,
                 updated_at=now - timedelta(minutes=5),
             )
             db.commit()
@@ -289,7 +293,7 @@ def test_rerun_skips_successful_destination():
                 fingerprint="s1",
                 topic="fx",
                 summary="Skip on rerun",
-                impact=10.0,
+                impact=40.0,
                 updated_at=now - timedelta(minutes=10),
             )
             db.commit()
@@ -334,7 +338,7 @@ def test_rerun_retries_failed_destination():
                 fingerprint="f1",
                 topic="fx",
                 summary="Retry failed destination",
-                impact=20.0,
+                impact=40.0,
                 updated_at=now - timedelta(minutes=10),
             )
             db.commit()
@@ -348,6 +352,101 @@ def test_rerun_retries_failed_destination():
             row_after_retry = db.query(PublishedPost).one()
             assert row_after_retry.status == "published"
             assert adapter.publish_calls == 2
+    finally:
+        engine.dispose()
+        if os.path.exists(db_path):
+            os.remove(db_path)
+
+
+def test_orchestrator_filters_out_events_with_impact_30_or_lower():
+    db_path = "./test_civicquant_digest_impact_filter.db"
+    SessionLocal, engine = _session_factory(db_path)
+
+    class CountingAdapter:
+        destination = "counting_destination"
+
+        def __init__(self):
+            self.publish_calls = 0
+
+        def render_payload(self, digest, canonical_text):  # noqa: ANN001
+            return canonical_text
+
+        def publish(self, payload: str) -> PublishResult:  # noqa: ARG002
+            self.publish_calls += 1
+            return PublishResult(status="published", external_ref="ok")
+
+    try:
+        with SessionLocal() as db:
+            now = datetime(2026, 1, 5, 0, 0, 0)
+            _seed_event(
+                db,
+                fingerprint="i-low",
+                topic="fx",
+                summary="Low impact excluded",
+                impact=30.0,
+                updated_at=now - timedelta(minutes=5),
+            )
+            _seed_event(
+                db,
+                fingerprint="i-high",
+                topic="fx",
+                summary="High impact included",
+                impact=31.0,
+                updated_at=now - timedelta(minutes=4),
+            )
+            db.commit()
+
+            adapter = CountingAdapter()
+            out = run_digest(db, window_hours=4, now_utc=now, adapters=[adapter])
+            assert out["status"] == "completed"
+            assert adapter.publish_calls == 1
+
+            artifact = db.query(DigestArtifact).one()
+            assert "High impact included" in artifact.canonical_text
+            assert "Low impact excluded" not in artifact.canonical_text
+    finally:
+        engine.dispose()
+        if os.path.exists(db_path):
+            os.remove(db_path)
+
+
+def test_telegram_publish_marks_event_flag_and_rerun_passes_over():
+    db_path = "./test_civicquant_digest_telegram_flag.db"
+    SessionLocal, engine = _session_factory(db_path)
+
+    class TelegramLikeAdapter:
+        destination = "vip_telegram"
+
+        def __init__(self):
+            self.publish_calls = 0
+
+        def render_payload(self, digest, canonical_text):  # noqa: ANN001
+            return canonical_text
+
+        def publish(self, payload: str) -> PublishResult:  # noqa: ARG002
+            self.publish_calls += 1
+            return PublishResult(status="published", external_ref="telegram-msg-1")
+
+    try:
+        with SessionLocal() as db:
+            now = datetime(2026, 1, 6, 0, 0, 0)
+            event = _seed_event(
+                db,
+                fingerprint="t1",
+                topic="fx",
+                summary="Telegram publish once",
+                impact=45.0,
+                updated_at=now - timedelta(minutes=8),
+            )
+            db.commit()
+
+            adapter = TelegramLikeAdapter()
+            run_digest(db, window_hours=4, now_utc=now, adapters=[adapter])
+            db.refresh(event)
+            assert event.is_published_telegram is True
+
+            run_digest(db, window_hours=4, now_utc=now, adapters=[adapter])
+            assert adapter.publish_calls == 1
     finally:
         engine.dispose()
         if os.path.exists(db_path):

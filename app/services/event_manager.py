@@ -207,6 +207,10 @@ def update_event_from_extraction(event: Event, extraction: ExtractionJson, lates
         _set("latest_extraction_id", latest_extraction_id)
 
     _set("last_updated_at", datetime.utcnow())
+    # Reset channel publish flags when event is updated so future digest windows
+    # can republish materially updated events per destination.
+    _set("is_published_telegram", False)
+    _set("is_published_twitter", False)
     return changes
 
 
