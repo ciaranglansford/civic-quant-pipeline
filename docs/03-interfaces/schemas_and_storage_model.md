@@ -14,9 +14,14 @@ Define the implemented storage contracts and semantics for the wire-bulletin pip
 ## Extraction Schema (`ExtractionJson`)
 
 - `topic`
+- `event_type` (additive)
+- `directionality` (additive)
 - `entities` (`countries`, `orgs`, `people`, `tickers`)
 - `affected_countries_first_order`
 - `market_stats`
+- `tags` (controlled family/value/source/confidence)
+- `relations` (typed subject/relation/object + source + inference level)
+- `impact_inputs` (severity/economic/propagation/specificity/novelty/strategic cues)
 - `sentiment`
 - `confidence` (`0..1`)
 - `impact_score` (`0..100`)
@@ -45,6 +50,8 @@ JSON contracts:
 - `payload_json`: strict validated extraction payload from provider output.
 - `canonical_payload_json`: backend-canonicalized payload used downstream.
 - `metadata_json`: provider telemetry, canonicalization rules, replay/content-reuse metadata, and `impact_scoring` breakdown.
+  - includes `impact_score_breakdown` and deterministic `enrichment_route`.
+  - includes structured-contract diagnostics (`tag_count`, `relation_count`, dropped optional controlled entries).
 
 ## Identity Contracts
 
@@ -66,8 +73,27 @@ Event identity (cross-message clustering):
 
 - Purpose: persist deterministic enrichment candidate decisions without blocking phase2.
 - Key fields: `event_id` (unique), `selected`, `triage_action`, `reason_codes`, `novelty_state`, `novelty_cluster_key`.
+- Routing field: `enrichment_route` (`store_only|index_only|deep_enrich`).
 - Scoring fields: `calibrated_score`, `raw_llm_score`, `score_band`, `shock_flags`, `score_breakdown`.
 - Timing fields: `scored_at`, `created_at`.
+
+## Structured Facet Contracts
+
+`event_tags`:
+- normalized event-tag rows for queryability.
+- key fields: `event_id`, `tag_type`, `tag_value`, `tag_source`, `confidence`.
+- uniqueness blocks duplicate facet rows per event.
+
+`event_relations`:
+- normalized typed event relations with strict observed vs inferred distinction.
+- key fields: `event_id`, `subject_type`, `subject_value`, `relation_type`, `object_type`, `object_value`, `relation_source`, `inference_level`, `confidence`.
+- `relation_source=observed` => `inference_level=0`.
+- `relation_source=inferred` => `inference_level=1`.
+
+`event_deep_enrichments`:
+- selective Pass B enrichment output for deterministic `deep_enrich` candidates.
+- one row per event (idempotent).
+- fields: `mechanism_notes`, `downstream_exposure_hints`, `contradiction_cues`, `offset_cues`, `theme_affinity_hints`.
 
 ## Raw/Event/Entity/Reporting Contracts
 

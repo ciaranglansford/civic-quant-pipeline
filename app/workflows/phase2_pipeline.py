@@ -12,6 +12,7 @@ from ..config import Settings, get_settings
 from ..contexts.entities.entity_indexing import index_entities_for_extraction
 from ..contexts.enrichment.enrichment_selection import select_and_store_enrichment_candidate
 from ..contexts.events.event_manager import EventUpsertResult, upsert_event
+from ..contexts.events.structured_persistence import sync_event_tags_and_relations
 from ..contexts.extraction.canonicalization import CANONICALIZER_VERSION
 from ..contexts.extraction.extraction_llm_client import OpenAiExtractionClient, ProviderError
 from ..contexts.extraction.extraction_validation import ExtractionValidationError
@@ -181,6 +182,11 @@ def process_phase2_batch(
                 upsert_routing_decision(db, raw.id, decision)
 
                 if event_id is not None:
+                    sync_event_tags_and_relations(
+                        db,
+                        event_id=event_id,
+                        extraction=processed.extraction_model,
+                    )
                     event_row = db.query(Event).filter_by(id=event_id).one_or_none()
                     if event_row is not None:
                         persist_theme_matches_for_event(

@@ -57,6 +57,30 @@ This API supports wire-bulletin ingestion and operational processing jobs.
   - returns event-level summaries ordered by `event_time DESC, id DESC`,
   - supports deterministic cursor pagination.
 
+### `GET /admin/query/events/by-tag`
+- Purpose: internal inspection endpoint for structured event retrieval by tag/timeframe.
+- Guard: admin token header.
+- Query params:
+  - `tag_type`, `tag_value`
+  - `start_time`, `end_time`
+  - optional `min_impact`
+  - optional `directionality`
+  - optional `limit`
+- Behavior: thin wrapper over query helper logic in `app/contexts/events/structured_query.py`.
+
+### `GET /admin/query/events/by-relation`
+- Purpose: internal inspection endpoint for structured event retrieval by relation/timeframe.
+- Guard: admin token header.
+- Query params:
+  - `relation_type`
+  - `start_time`, `end_time`
+  - optional `subject_type`, `subject_value`
+  - optional `object_type`, `object_value`
+  - optional `min_impact`
+  - optional `directionality`
+  - optional `limit`
+- Behavior: thin wrapper over query helper logic in `app/contexts/events/structured_query.py`.
+
 ### Internal Theme Batch Admin Endpoints (`/admin/*`)
 
 These are internal/debug endpoints by convention in this pass (no auth/user system added yet):
@@ -93,11 +117,13 @@ These are internal/debug endpoints by convention in this pass (no auth/user syst
 ### CLI Jobs
 
 - `python -m app.jobs.run_phase2_extraction`
+- `python -m app.jobs.run_deep_enrichment`
 - `python -m app.jobs.run_digest` (deterministic selection/state + optional LLM synthesis with strict validation/fallback)
 - `python -m app.jobs.test_openai_extract`
 - `python -m app.jobs.reset_dev_schema`
 - `python -m app.jobs.clear_all_but_raw_messages`
 - `python -m app.jobs.adopt_stability_contracts`
+- `python -m app.jobs.adopt_structured_event_schema`
 
 Runtime ownership note:
 - phase2 orchestration entrypoint is `app/workflows/phase2_pipeline.py`

@@ -7,7 +7,24 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from ...schemas import ExtractionJson
+from ...schemas import (
+    ExtractionImpactInputs,
+    ExtractionJson,
+    ExtractionRelation,
+    ExtractionTag,
+)
+from ...structured_contracts import (
+    inference_level_for_source,
+    normalize_directionality,
+    normalize_event_type,
+    normalize_relation_entity_type,
+    normalize_relation_source,
+    normalize_relation_type,
+    normalize_relation_value,
+    normalize_tag_family,
+    normalize_tag_source,
+    normalize_tag_value,
+)
 
 
 _WS_RE = re.compile(r"\s+")
@@ -378,6 +395,198 @@ def compute_authoritative_fingerprint(extraction: ExtractionJson) -> Fingerprint
     )
 
 
+_TOPIC_EVENT_TYPE_DEFAULT: dict[str, str] = {
+    "macro_econ": "market",
+    "central_banks": "policy",
+    "equities": "market",
+    "credit": "market",
+    "rates": "market",
+    "fx": "market",
+    "commodities": "production",
+    "crypto": "market",
+    "war_security": "conflict",
+    "geopolitics": "policy",
+    "company_specific": "company",
+    "other": "other",
+}
+
+
+def _safe_confidence(value: object) -> float | None:
+    if value is None:
+        return None
+    if not isinstance(value, (float, int)):
+        return None
+    numeric = float(value)
+    if 0.0 <= numeric <= 1.0:
+        return numeric
+    return None
+
+
+def _canonical_impact_inputs(raw_inputs: object) -> ExtractionImpactInputs:
+    if not isinstance(raw_inputs, dict):
+        return ExtractionImpactInputs()
+
+    def _extract_list(name: str) -> list[str]:
+        raw_values = raw_inputs.get(name)
+        if not isinstance(raw_values, list):
+            return []
+        return _canonical_text_list([str(value) for value in raw_values if isinstance(value, str)])
+
+    return ExtractionImpactInputs(
+        severity_cues=_extract_list("severity_cues"),
+        economic_relevance_cues=_extract_list("economic_relevance_cues"),
+        propagation_potential_cues=_extract_list("propagation_potential_cues"),
+        specificity_cues=_extract_list("specificity_cues"),
+        novelty_cues=_extract_list("novelty_cues"),
+        strategic_tag_hits=_extract_list("strategic_tag_hits"),
+    )
+
+
+def _canonical_tags(raw_tags: object, *, directionality: str | None) -> tuple[list[ExtractionTag], int]:
+    canonical_tags: list[ExtractionTag] = []
+    seen: set[tuple[str, str, str]] = set()
+    dropped = 0
+
+    tag_items = raw_tags if isinstance(raw_tags, list) else []
+    for item in tag_items:
+        if not isinstance(item, dict):
+            dropped += 1
+            continue
+
+        tag_type = normalize_tag_family(item.get("tag_type") if isinstance(item.get("tag_type"), str) else None)
+        tag_value = normalize_tag_value(item.get("tag_value") if isinstance(item.get("tag_value"), str) else None)
+        tag_source = normalize_tag_source(item.get("tag_source") if isinstance(item.get("tag_source"), str) else None)
+        if not tag_type or not tag_value or not tag_source:
+            dropped += 1
+            continue
+
+        if tag_type == "directionality":
+            normalized_dir = normalize_directionality(tag_value)
+            if not normalized_dir:
+                dropped += 1
+                continue
+            tag_value = normalized_dir
+        elif tag_type == "countries":
+            tag_value = _canonical_country(tag_value)
+        else:
+            tag_value = _normalize_spaces(tag_value)
+        if not tag_value:
+            dropped += 1
+            continue
+
+        confidence = _safe_confidence(item.get("confidence"))
+        dedupe_key = (tag_type, tag_value.lower(), tag_source)
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        canonical_tags.append(
+            ExtractionTag(
+                tag_type=tag_type,
+                tag_value=tag_value,
+                tag_source=tag_source,
+                confidence=confidence,
+            )
+        )
+
+    if directionality:
+        dedupe_key = ("directionality", directionality.lower(), "observed")
+        if dedupe_key not in seen:
+            canonical_tags.append(
+                ExtractionTag(
+                    tag_type="directionality",
+                    tag_value=directionality,
+                    tag_source="observed",
+                    confidence=None,
+                )
+            )
+            seen.add(dedupe_key)
+
+    canonical_tags.sort(key=lambda tag: (tag.tag_type, tag.tag_value.lower(), tag.tag_source))
+    return canonical_tags, dropped
+
+
+def _canonical_relations(raw_relations: object) -> tuple[list[ExtractionRelation], int]:
+    canonical_relations: list[ExtractionRelation] = []
+    seen: set[tuple[str, str, str, str, str, str, int]] = set()
+    dropped = 0
+
+    relation_items = raw_relations if isinstance(raw_relations, list) else []
+    for item in relation_items:
+        if not isinstance(item, dict):
+            dropped += 1
+            continue
+
+        subject_type = normalize_relation_entity_type(
+            item.get("subject_type") if isinstance(item.get("subject_type"), str) else None
+        )
+        object_type = normalize_relation_entity_type(
+            item.get("object_type") if isinstance(item.get("object_type"), str) else None
+        )
+        relation_type = normalize_relation_type(
+            item.get("relation_type") if isinstance(item.get("relation_type"), str) else None
+        )
+        subject_value = normalize_relation_value(
+            item.get("subject_value") if isinstance(item.get("subject_value"), str) else None
+        )
+        object_value = normalize_relation_value(
+            item.get("object_value") if isinstance(item.get("object_value"), str) else None
+        )
+        relation_source = normalize_relation_source(
+            item.get("relation_source") if isinstance(item.get("relation_source"), str) else None
+        )
+
+        if not (
+            subject_type
+            and object_type
+            and relation_type
+            and subject_value
+            and object_value
+            and relation_source
+        ):
+            dropped += 1
+            continue
+
+        inference_level = inference_level_for_source(relation_source)
+        confidence = _safe_confidence(item.get("confidence"))
+        dedupe_key = (
+            subject_type,
+            subject_value.lower(),
+            relation_type,
+            object_type,
+            object_value.lower(),
+            relation_source,
+            inference_level,
+        )
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        canonical_relations.append(
+            ExtractionRelation(
+                subject_type=subject_type,
+                subject_value=_normalize_spaces(subject_value),
+                relation_type=relation_type,
+                object_type=object_type,
+                object_value=_normalize_spaces(object_value),
+                relation_source=relation_source,
+                inference_level=inference_level,
+                confidence=confidence,
+            )
+        )
+
+    canonical_relations.sort(
+        key=lambda relation: (
+            relation.subject_type,
+            relation.subject_value.lower(),
+            relation.relation_type,
+            relation.object_type,
+            relation.object_value.lower(),
+            relation.relation_source,
+            int(relation.inference_level or 0),
+        )
+    )
+    return canonical_relations, dropped
+
+
 def canonicalize_extraction(payload: dict) -> tuple[ExtractionJson, list[str], FingerprintComputation]:
     """
     Deterministically canonicalize validated extraction payload values for downstream logic.
@@ -433,6 +642,93 @@ def canonicalize_extraction(payload: dict) -> tuple[ExtractionJson, list[str], F
     if event_core != event_core_raw:
         rules.append("event_core_text_normalization")
     canonical_payload["event_core"] = event_core
+
+    topic_value = canonical_payload.get("topic")
+    topic_key = str(topic_value) if isinstance(topic_value, str) else "other"
+
+    event_type_raw = canonical_payload.get("event_type")
+    event_type = normalize_event_type(event_type_raw if isinstance(event_type_raw, str) else None)
+    if event_type is None:
+        if isinstance(event_type_raw, str) and event_type_raw.strip():
+            rules.append("event_type_invalid_dropped")
+        event_type = _TOPIC_EVENT_TYPE_DEFAULT.get(topic_key, "other")
+        rules.append("event_type_defaulted_from_topic")
+    elif event_type_raw != event_type:
+        rules.append("event_type_normalization")
+    canonical_payload["event_type"] = event_type
+
+    directionality_raw = canonical_payload.get("directionality")
+    directionality = normalize_directionality(directionality_raw if isinstance(directionality_raw, str) else None)
+    if isinstance(directionality_raw, str) and directionality is None:
+        rules.append("directionality_invalid_dropped")
+    elif isinstance(directionality_raw, str) and directionality_raw != directionality:
+        rules.append("directionality_normalization")
+    canonical_payload["directionality"] = directionality
+
+    impact_inputs_raw = canonical_payload.get("impact_inputs")
+    impact_inputs = _canonical_impact_inputs(impact_inputs_raw)
+    if impact_inputs.model_dump(mode="json") != impact_inputs_raw:
+        rules.append("impact_inputs_normalization")
+
+    tags_raw = canonical_payload.get("tags")
+    canonical_tags, dropped_tag_count = _canonical_tags(tags_raw, directionality=directionality)
+    if dropped_tag_count > 0:
+        rules.append("structured_tags_invalid_dropped")
+
+    tag_keys = {(tag.tag_type, tag.tag_value.lower(), tag.tag_source) for tag in canonical_tags}
+    for country in sorted(set(canonical_countries + affected), key=str.lower):
+        key = ("countries", country.lower(), "observed")
+        if key in tag_keys:
+            continue
+        canonical_tags.append(
+            ExtractionTag(
+                tag_type="countries",
+                tag_value=country,
+                tag_source="observed",
+                confidence=None,
+            )
+        )
+        tag_keys.add(key)
+    for company in orgs:
+        key = ("companies", company.lower(), "observed")
+        if key in tag_keys:
+            continue
+        canonical_tags.append(
+            ExtractionTag(
+                tag_type="companies",
+                tag_value=company,
+                tag_source="observed",
+                confidence=None,
+            )
+        )
+        tag_keys.add(key)
+    canonical_tags.sort(key=lambda tag: (tag.tag_type, tag.tag_value.lower(), tag.tag_source))
+
+    strategic_from_tags = sorted(
+        {
+            tag.tag_value
+            for tag in canonical_tags
+            if tag.tag_type == "strategic" and tag.tag_value
+        },
+        key=str.lower,
+    )
+    if strategic_from_tags:
+        merged_strategic = sorted(
+            set(impact_inputs.strategic_tag_hits + strategic_from_tags),
+            key=str.lower,
+        )
+        if merged_strategic != impact_inputs.strategic_tag_hits:
+            impact_inputs = impact_inputs.model_copy(update={"strategic_tag_hits": merged_strategic})
+            rules.append("impact_inputs_strategic_merge")
+
+    canonical_payload["impact_inputs"] = impact_inputs.model_dump(mode="json")
+    canonical_payload["tags"] = [tag.model_dump(mode="json") for tag in canonical_tags]
+
+    relations_raw = canonical_payload.get("relations")
+    canonical_relations, dropped_relation_count = _canonical_relations(relations_raw)
+    if dropped_relation_count > 0:
+        rules.append("structured_relations_invalid_dropped")
+    canonical_payload["relations"] = [relation.model_dump(mode="json") for relation in canonical_relations]
 
     summary, summary_rules = _rewrite_summary_safely(canonical_payload)
     if summary != canonical_payload.get("summary_1_sentence"):

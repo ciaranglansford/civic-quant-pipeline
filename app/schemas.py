@@ -65,11 +65,61 @@ class MarketStat(BaseModel):
     context: str | None = None
 
 
+class ExtractionTag(BaseModel):
+    tag_type: str
+    tag_value: str
+    tag_source: str = "observed"
+    confidence: float | None = None
+
+    @field_validator("confidence")
+    @classmethod
+    def _validate_confidence(cls, v: float | None) -> float | None:
+        if v is None:
+            return None
+        if not (0.0 <= v <= 1.0):
+            raise ValueError("confidence must be between 0 and 1")
+        return v
+
+
+class ExtractionRelation(BaseModel):
+    subject_type: str
+    subject_value: str
+    relation_type: str
+    object_type: str
+    object_value: str
+    relation_source: str = "observed"
+    inference_level: int | None = None
+    confidence: float | None = None
+
+    @field_validator("confidence")
+    @classmethod
+    def _validate_confidence(cls, v: float | None) -> float | None:
+        if v is None:
+            return None
+        if not (0.0 <= v <= 1.0):
+            raise ValueError("confidence must be between 0 and 1")
+        return v
+
+
+class ExtractionImpactInputs(BaseModel):
+    severity_cues: list[str] = Field(default_factory=list)
+    economic_relevance_cues: list[str] = Field(default_factory=list)
+    propagation_potential_cues: list[str] = Field(default_factory=list)
+    specificity_cues: list[str] = Field(default_factory=list)
+    novelty_cues: list[str] = Field(default_factory=list)
+    strategic_tag_hits: list[str] = Field(default_factory=list)
+
+
 class ExtractionJson(BaseModel):
     topic: Topic
+    event_type: str | None = None
+    directionality: str | None = None
     entities: ExtractionEntities
     affected_countries_first_order: list[str] = Field(default_factory=list)
     market_stats: list[MarketStat] = Field(default_factory=list)
+    tags: list[ExtractionTag] = Field(default_factory=list)
+    relations: list[ExtractionRelation] = Field(default_factory=list)
+    impact_inputs: ExtractionImpactInputs = Field(default_factory=ExtractionImpactInputs)
     sentiment: Sentiment = "unknown"
     confidence: float = 0.0
     impact_score: float = 0.0

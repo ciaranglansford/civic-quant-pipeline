@@ -44,10 +44,15 @@ def calibration_from_metadata(
     impact_meta = metadata.get("impact_scoring") if isinstance(metadata, dict) else {}
     if not isinstance(impact_meta, dict):
         impact_meta = {}
+    calibrated_score = float(impact_meta.get("calibrated_score", extraction_model.impact_score))
+    enrichment_route = str(impact_meta.get("enrichment_route") or "").strip()
+    if not enrichment_route:
+        enrichment_route = "deep_enrich" if calibrated_score >= 80.0 else ("index_only" if calibrated_score >= 45.0 else "store_only")
     return ImpactCalibrationResult(
         raw_llm_score=float(impact_meta.get("raw_llm_score", extraction_model.impact_score)),
-        calibrated_score=float(impact_meta.get("calibrated_score", extraction_model.impact_score)),
+        calibrated_score=calibrated_score,
         score_band=str(impact_meta.get("score_band", impact_band(float(extraction_model.impact_score)))),
+        enrichment_route=enrichment_route,
         shock_flags=list(impact_meta.get("shock_flags", [])),
         rules_fired=list(impact_meta.get("rules_fired", [])),
         score_breakdown=dict(impact_meta.get("score_breakdown", {})),

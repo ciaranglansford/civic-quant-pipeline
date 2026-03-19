@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     phase2_force_reprocess: bool = False
     phase2_content_reuse_enabled: bool = True
     phase2_content_reuse_window_hours: int = 6
+    deep_enrichment_enabled: bool = True
+    deep_enrichment_batch_size: int = 50
 
     openai_api_key: str | None = None
     openai_model: str = "gpt-4o-mini"

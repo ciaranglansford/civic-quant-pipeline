@@ -13,6 +13,7 @@ class ImpactCalibrationResult:
     raw_llm_score: float
     calibrated_score: float
     score_band: str
+    enrichment_route: str
     shock_flags: list[str]
     rules_fired: list[str]
     score_breakdown: dict[str, object]
@@ -240,6 +241,75 @@ def _shock_flags(extraction: ExtractionJson, text: str) -> list[str]:
     return sorted(set(found))
 
 
+def _cue_bonus(cues: list[str], *, step: int, max_bonus: int) -> int:
+    if not cues:
+        return 0
+    return min(max_bonus, len(cues) * step)
+
+
+def _specificity_component(extraction: ExtractionJson, text: str) -> int:
+    score = 0
+    if extraction.market_stats:
+        score += min(6, len(extraction.market_stats) * 2)
+    if extraction.entities.tickers:
+        score += min(3, len(extraction.entities.tickers))
+    if len(extraction.keywords) >= 3:
+        score += 3
+    if extraction.event_time is not None:
+        score += 2
+    if _PERCENT_BPS_RE.search(text):
+        score += 2
+    score += _cue_bonus(extraction.impact_inputs.specificity_cues, step=2, max_bonus=4)
+    return min(15, score)
+
+
+def _novelty_component(extraction: ExtractionJson, *, shock_flags: list[str]) -> int:
+    score = 0
+    if extraction.is_breaking:
+        score += 4
+    if extraction.breaking_window in {"15m", "1h"}:
+        score += 2
+    if extraction.event_time is not None:
+        score += 1
+    if shock_flags:
+        score += 2
+    score += _cue_bonus(extraction.impact_inputs.novelty_cues, step=2, max_bonus=4)
+    return min(10, score)
+
+
+def _strategic_component(extraction: ExtractionJson) -> tuple[int, list[str]]:
+    strategic_hits = sorted(
+        {
+            (tag.tag_value or "").strip().lower()
+            for tag in extraction.tags
+            if tag.tag_type == "strategic" and tag.tag_value
+        }
+        | {(value or "").strip().lower() for value in extraction.impact_inputs.strategic_tag_hits if value}
+    )
+    score = 0
+    if strategic_hits:
+        score += min(8, len(strategic_hits) * 3)
+    if extraction.topic in {"war_security", "geopolitics", "commodities"}:
+        score += 2
+    return min(10, score), strategic_hits
+
+
+def _route_for_score(
+    *,
+    calibrated_score: float,
+    strategic_relevance: int,
+    strategic_hits: list[str],
+    local_incident: bool,
+) -> str:
+    if local_incident:
+        return "store_only"
+    if calibrated_score >= 80.0 or strategic_relevance >= 8 or len(strategic_hits) >= 2:
+        return "deep_enrich"
+    if calibrated_score >= 45.0:
+        return "index_only"
+    return "store_only"
+
+
 def calibrate_impact(extraction: ExtractionJson) -> ImpactCalibrationResult:
     raw_llm_score = float(extraction.impact_score)
     text = _normalize_text(
@@ -253,13 +323,40 @@ def calibrate_impact(extraction: ExtractionJson) -> ImpactCalibrationResult:
     magnitude = _economic_magnitude_score(extraction, text)
     transmission = _transmission_clarity_score(extraction, text)
     urgency = _urgency_score(extraction)
-
-    base_rule_score = float(market_relevance + magnitude + transmission + urgency)
-    score = base_rule_score
-
     shock_flags = _shock_flags(extraction, text)
     has_market_link = bool(extraction.market_stats or extraction.entities.tickers or _contains_any(text, _TRANSMISSION_MARKERS))
     transmission_criteria_met = transmission >= 15 and has_market_link
+
+    severity = min(
+        25,
+        magnitude
+        + (6 if shock_flags else 0)
+        + _cue_bonus(extraction.impact_inputs.severity_cues, step=2, max_bonus=6),
+    )
+    economic_relevance = min(
+        20,
+        int(round(market_relevance * 0.6))
+        + _cue_bonus(extraction.impact_inputs.economic_relevance_cues, step=2, max_bonus=6),
+    )
+    propagation_potential = min(
+        20,
+        int(round(transmission * 0.6))
+        + _cue_bonus(extraction.impact_inputs.propagation_potential_cues, step=2, max_bonus=6),
+    )
+    specificity = _specificity_component(extraction, text)
+    novelty_signal = _novelty_component(extraction, shock_flags=shock_flags)
+    strategic_relevance, strategic_hits = _strategic_component(extraction)
+
+    component_score = float(
+        severity
+        + economic_relevance
+        + propagation_potential
+        + specificity
+        + novelty_signal
+        + strategic_relevance
+    )
+    base_rule_score = component_score + (urgency * 0.4)
+    score = base_rule_score
 
     rules_fired: list[str] = []
     boosts: list[dict[str, object]] = []
@@ -304,24 +401,44 @@ def calibrate_impact(extraction: ExtractionJson) -> ImpactCalibrationResult:
         rules_fired.append("impact:transmission_top_band_block")
         caps.append({"rule": "transmission_top_band_block", "max_score": 79.0})
 
+    if strategic_hits:
+        rules_fired.append("impact:strategic_relevance_signal")
+
     pre_cap_score = score
     final_score = float(max(0.0, min(100.0, min(score, max_allowed_score))))
     calibrated_score = int(round(final_score))
     score_band = _score_band(float(calibrated_score))
+    enrichment_route = _route_for_score(
+        calibrated_score=float(calibrated_score),
+        strategic_relevance=strategic_relevance,
+        strategic_hits=strategic_hits,
+        local_incident=local_incident,
+    )
+    rules_fired.append(f"impact:route:{enrichment_route}")
 
     score_breakdown: dict[str, object] = {
+        "components": {
+            "severity": severity,
+            "economic_relevance": economic_relevance,
+            "propagation_potential": propagation_potential,
+            "specificity": specificity,
+            "novelty_signal": novelty_signal,
+            "strategic_relevance": strategic_relevance,
+        },
         "dimensions": {
             "market_relevance": market_relevance,
             "economic_magnitude": magnitude,
             "transmission_clarity": transmission,
             "urgency": urgency,
         },
+        "strategic_hits": strategic_hits,
         "base_rule_score": base_rule_score,
         "pre_cap_score": pre_cap_score,
         "max_allowed_score": max_allowed_score,
         "max_allowed_band": _max_band_for_score(max_allowed_score),
         "transmission_criteria_met": transmission_criteria_met,
         "local_incident": local_incident,
+        "enrichment_route": enrichment_route,
         "raw_score_used_as_authoritative": False,
         "caps_applied": caps,
         "boosts_applied": boosts,
@@ -333,6 +450,7 @@ def calibrate_impact(extraction: ExtractionJson) -> ImpactCalibrationResult:
         raw_llm_score=raw_llm_score,
         calibrated_score=float(calibrated_score),
         score_band=score_band,
+        enrichment_route=enrichment_route,
         shock_flags=shock_flags,
         rules_fired=rules_fired,
         score_breakdown=score_breakdown,

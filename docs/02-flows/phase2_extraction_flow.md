@@ -29,12 +29,19 @@ Phase2 extraction sits at the Stage 3-5 boundary:
 - If a content-reuse match is found, reuse canonical extraction payload/hashes and skip model call.
 - Otherwise call OpenAI Responses API.
 - Parse and strictly validate JSON schema.
-- Prompt template version: `extraction_agent_v3` (with older templates kept for reproducibility).
+- Prompt template version: `extraction_agent_v4` (with older templates kept for reproducibility).
+- Pass A payload contract includes additive structured fields:
+  - `event_type`
+  - `directionality`
+  - controlled `tags`
+  - typed `relations` (`observed` and inferred level-1 only)
+  - `impact_inputs`
 
 4. Persistence
 - Write typed extraction fields for retrieval.
 - Write raw validated payload in `payload_json`.
 - Write deterministic canonicalized payload in `canonical_payload_json`.
+- Invalid optional controlled tag/relation entries are dropped during canonicalization; core-invalid payloads still fail.
 - Write deterministic hash/identity fields:
   - `normalized_text_hash`
   - `replay_identity_key`
@@ -42,6 +49,7 @@ Phase2 extraction sits at the Stage 3-5 boundary:
   - `claim_hash`
   - `event_identity_fingerprint_v2`
 - Write provider/processing telemetry in `metadata_json`.
+  - Includes structured contract diagnostics (tag/relation counts and dropped optional entries).
 
 5. Downstream deterministic processing
 - Canonicalize entities/source values deterministically.
@@ -63,7 +71,21 @@ Phase2 extraction sits at the Stage 3-5 boundary:
   - Same identity + materially conflicting claim class/time bucket -> mark review-required and suppress promotion.
 - Index entities to `entity_mentions` for retrieval-ready query paths.
 - Run deferred enrichment selection hook with novelty filtering and persist `enrichment_candidates`.
+- Sync normalized structured facets per event:
+  - `event_tags`
+  - `event_relations`
+- Deterministic impact scoring emits `impact_score_breakdown` and `enrichment_route` (`store_only|index_only|deep_enrich`).
 - Mark processing state `completed` or `failed`.
+
+6. Pass B selective deep enrichment (separate job)
+- Job trigger: `python -m app.jobs.run_deep_enrichment`
+- Runs only for deterministic `deep_enrich` candidates.
+- Persists narrow structured outputs in `event_deep_enrichments`:
+  - `mechanism_notes`
+  - `downstream_exposure_hints`
+  - `contradiction_cues`
+  - `offset_cues`
+  - `theme_affinity_hints`
 
 ## Consumes / Produces
 
@@ -78,6 +100,9 @@ Phase2 extraction sits at the Stage 3-5 boundary:
 - `routing_decisions` row updates/inserts
 - `events` and `event_messages` updates
 - `enrichment_candidates` updates
+- `event_tags` updates
+- `event_relations` updates
+- `event_deep_enrichments` updates (Pass B job)
 - `entity_mentions` updates
 - `message_processing_states` status transitions
 - phase2 run logs with summary counts

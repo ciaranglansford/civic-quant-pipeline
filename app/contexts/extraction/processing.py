@@ -81,6 +81,8 @@ def materialize_extraction_for_raw_message(
     backend_fingerprint_input = ""
     llm_response = None
     canonicalization_rules: list[str] = []
+    dropped_tag_count = 0
+    dropped_relation_count = 0
     canonical_payload_hash: str
     claim_hash: str
     action_class: str
@@ -97,6 +99,22 @@ def materialize_extraction_for_raw_message(
         extraction_model = ExtractionJson.model_validate(extraction.canonical_payload_json)
         calibration = calibration_from_metadata(extraction, extraction_model)
         canonical_payload = extraction_model.model_dump(mode="json")
+        dropped_tag_count = int(
+            (
+                extraction.metadata_json.get("structured_contract", {})
+                if isinstance(extraction.metadata_json, dict)
+                else {}
+            ).get("dropped_tag_count", 0)
+            or 0
+        )
+        dropped_relation_count = int(
+            (
+                extraction.metadata_json.get("structured_contract", {})
+                if isinstance(extraction.metadata_json, dict)
+                else {}
+            ).get("dropped_relation_count", 0)
+            or 0
+        )
         canonical_payload_hash = extraction.canonical_payload_hash or compute_canonical_payload_hash(
             extraction_model
         )
@@ -153,6 +171,10 @@ def materialize_extraction_for_raw_message(
             canonicalization_rules = source_meta.get("canonicalization_rules", [])
             backend_fingerprint_version = source_meta.get("backend_event_fingerprint_version", "v2")
             backend_fingerprint_input = source_meta.get("backend_event_fingerprint_input", "")
+            structured_meta = source_meta.get("structured_contract", {})
+            if isinstance(structured_meta, dict):
+                dropped_tag_count = int(structured_meta.get("dropped_tag_count", 0) or 0)
+                dropped_relation_count = int(structured_meta.get("dropped_relation_count", 0) or 0)
             logger.info(
                 "phase2_content_reuse raw_message_id=%s source_extraction_id=%s normalized_text_hash=%s canonical_payload_hash=%s",
                 raw.id,
@@ -169,6 +191,10 @@ def materialize_extraction_for_raw_message(
 
             raw_payload = parsed
             extraction_model_raw, canonicalization_rules, fingerprint_info = canonicalize_extraction(parsed)
+            raw_tag_count = len(parsed.get("tags", [])) if isinstance(parsed.get("tags"), list) else 0
+            raw_relation_count = len(parsed.get("relations", [])) if isinstance(parsed.get("relations"), list) else 0
+            dropped_tag_count = max(0, raw_tag_count - len(extraction_model_raw.tags))
+            dropped_relation_count = max(0, raw_relation_count - len(extraction_model_raw.relations))
             calibration = calibrate_impact(extraction_model_raw)
             extraction_model = extraction_model_raw.model_copy(
                 update={"impact_score": calibration.calibrated_score}
@@ -340,7 +366,17 @@ def materialize_extraction_for_raw_message(
             "score_band": calibration.score_band,
             "shock_flags": calibration.shock_flags,
             "rules_fired": calibration.rules_fired,
+            "impact_score_breakdown": calibration.score_breakdown.get("components", {}),
+            "enrichment_route": calibration.enrichment_route,
             "score_breakdown": calibration.score_breakdown,
+        },
+        "structured_contract": {
+            "event_type": extraction_model.event_type,
+            "directionality": extraction_model.directionality,
+            "tag_count": len(extraction_model.tags),
+            "relation_count": len(extraction_model.relations),
+            "dropped_tag_count": dropped_tag_count,
+            "dropped_relation_count": dropped_relation_count,
         },
     }
     db.flush()
@@ -354,4 +390,3 @@ def materialize_extraction_for_raw_message(
         action_class=action_class,
         time_bucket=time_bucket,
     )
-

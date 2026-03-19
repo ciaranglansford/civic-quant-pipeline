@@ -12,6 +12,7 @@ The system combines:
 
 The pipeline converts short bulletin text into:
 - structured event records (`events`) representing reported claims
+- a stronger structured event object in extraction payloads (`event_type`, `directionality`, controlled `tags`, typed `relations`, `impact_inputs`)
 - scheduled digests that synthesize those events into a briefing format
 - scheduled thematic opportunity assessments and thesis cards (batch-only, internal POC)
 
@@ -55,9 +56,12 @@ Transitional shims intentionally retained in this pass:
 - `app/workflows/phase2_pipeline.py` calls the extraction client.
 - LLM returns strict JSON, then deterministic validation/canonicalization runs.
 - Structured outputs are stored in `extractions`.
+- Pass A extraction now emits controlled tags/relations and impact inputs.
+- Unknown controlled tag/relation values are dropped safely during canonicalization (core-invalid payloads still fail).
 
 3. Event Storage / Clustering
 - Deterministic routing + event upsert logic writes `events` and `event_messages`.
+- Normalized structured facets are synced into `event_tags` and `event_relations` for queryability.
 
 4. Digest Selection (deterministic)
 - `app/digest/query.py` filters by frozen time window and impact threshold.
@@ -83,6 +87,18 @@ Transitional shims intentionally retained in this pass:
 - Scheduled batch run evaluates lenses/transmission patterns over a time window.
 - Assessments, gated thesis cards, and brief artifacts are persisted.
 
+## Two-Pass Enrichment Model
+
+- Pass A (phase2): extraction + canonicalization + deterministic impact scoring + deterministic enrichment route assignment.
+- Pass B (separate job): runs only for `deep_enrich` candidates and persists narrow structured enrichment output in `event_deep_enrichments`.
+
+Deterministic enrichment routes:
+- `store_only`
+- `index_only`
+- `deep_enrich`
+
+Routing is deterministic and inspectable; model output does not decide orchestration.
+
 ## LLM Usage
 
 LLM is used in two places:
@@ -102,6 +118,7 @@ What the LLM does not control:
 - publication state transitions
 - source-event coverage accounting
 - artifact deduplication identity
+- enrichment route assignment
 
 ## Digest Composition
 
@@ -150,6 +167,7 @@ Why the split exists:
 - Backend API: `uvicorn app.main:app --reload`
 - Listener: `python -m listener.telegram_listener`
 - Extraction job: `python -m app.jobs.run_phase2_extraction`
+- Deep enrichment job: `python -m app.jobs.run_deep_enrichment`
 - Digest job: `python -m app.jobs.run_digest`
 - Theme batch job: `python -m app.jobs.run_theme_batch --theme energy_to_agri_inputs`
 

@@ -2,18 +2,29 @@ from __future__ import annotations
 
 import json
 
-from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from ...schemas import ExtractionEntities, MarketStat
+from ...schemas import (
+    ExtractionEntities,
+    ExtractionImpactInputs,
+    ExtractionRelation,
+    ExtractionTag,
+    MarketStat,
+)
 
 
 class StrictExtractionJson(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     topic: str
+    event_type: str | None = None
+    directionality: str | None = None
     entities: ExtractionEntities
     affected_countries_first_order: list[str]
     market_stats: list[MarketStat]
+    tags: list[ExtractionTag] = Field(default_factory=list)
+    relations: list[ExtractionRelation] = Field(default_factory=list)
+    impact_inputs: ExtractionImpactInputs = Field(default_factory=ExtractionImpactInputs)
     sentiment: str
     confidence: float
     impact_score: float

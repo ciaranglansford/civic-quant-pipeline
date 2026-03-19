@@ -169,6 +169,9 @@ class Event(Base):
     latest_extraction = relationship("Extraction", foreign_keys=[latest_extraction_id])
     published_posts = relationship("PublishedPost", back_populates="event")
     enrichment_candidate = relationship("EnrichmentCandidate", back_populates="event", uselist=False)
+    deep_enrichment = relationship("EventDeepEnrichment", back_populates="event", uselist=False)
+    tags = relationship("EventTag", back_populates="event")
+    relations = relationship("EventRelation", back_populates="event")
     theme_evidence = relationship("EventThemeEvidence", back_populates="event")
 
 
@@ -193,6 +196,66 @@ class EventMessage(Base):
 
     event = relationship("Event", back_populates="messages")
     raw_message = relationship("RawMessage", back_populates="event_links")
+
+
+class EventTag(Base):
+    __tablename__ = "event_tags"
+    __table_args__ = (
+        UniqueConstraint(
+            "event_id",
+            "tag_type",
+            "tag_value",
+            "tag_source",
+            name="uq_event_tags_event_type_value_source",
+        ),
+        Index("ix_event_tags_type_value_event", "tag_type", "tag_value", "event_id"),
+        Index("ix_event_tags_event_id", "event_id"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    event_id = Column(Integer, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
+    tag_type = Column(String(64), nullable=False)
+    tag_value = Column(String(255), nullable=False)
+    tag_source = Column(String(16), nullable=False)
+    confidence = Column(Float, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+
+    event = relationship("Event", back_populates="tags")
+
+
+class EventRelation(Base):
+    __tablename__ = "event_relations"
+    __table_args__ = (
+        UniqueConstraint(
+            "event_id",
+            "subject_type",
+            "subject_value",
+            "relation_type",
+            "object_type",
+            "object_value",
+            "relation_source",
+            "inference_level",
+            name="uq_event_relations_event_relation_shape",
+        ),
+        Index("ix_event_relations_relation_event", "relation_type", "event_id"),
+        Index("ix_event_relations_subject_lookup", "subject_type", "subject_value", "relation_type"),
+        Index("ix_event_relations_object_lookup", "object_type", "object_value", "relation_type"),
+        Index("ix_event_relations_event_id", "event_id"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    event_id = Column(Integer, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
+    subject_type = Column(String(64), nullable=False)
+    subject_value = Column(String(255), nullable=False)
+    relation_type = Column(String(64), nullable=False)
+    object_type = Column(String(64), nullable=False)
+    object_value = Column(String(255), nullable=False)
+    relation_source = Column(String(16), nullable=False)
+    inference_level = Column(Integer, nullable=False)
+    confidence = Column(Float, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+
+    event = relationship("Event", back_populates="relations")
 
 
 class RoutingDecision(Base):
@@ -272,6 +335,7 @@ class EnrichmentCandidate(Base):
     __table_args__ = (
         UniqueConstraint("event_id", name="uq_enrichment_candidate_event"),
         Index("ix_enrichment_candidates_selected_scored", "selected", "scored_at"),
+        Index("ix_enrichment_candidates_route_selected_scored", "enrichment_route", "selected", "scored_at"),
     )
 
     id = Column(Integer, primary_key=True)
@@ -281,6 +345,7 @@ class EnrichmentCandidate(Base):
     reason_codes = Column(JSON, nullable=False, default=list)
     novelty_state = Column(String(64), nullable=False, default="novel")
     novelty_cluster_key = Column(String(255), nullable=True, index=True)
+    enrichment_route = Column(String(32), nullable=False, default="store_only", index=True)
     calibrated_score = Column(Float, nullable=False, default=0.0)
     raw_llm_score = Column(Float, nullable=True)
     score_band = Column(String(16), nullable=False, default="low")
@@ -290,6 +355,28 @@ class EnrichmentCandidate(Base):
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     event = relationship("Event", back_populates="enrichment_candidate")
+
+
+class EventDeepEnrichment(Base):
+    __tablename__ = "event_deep_enrichments"
+    __table_args__ = (
+        UniqueConstraint("event_id", name="uq_event_deep_enrichment_event"),
+        Index("ix_event_deep_enrichment_created", "created_at"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    event_id = Column(Integer, ForeignKey("events.id", ondelete="CASCADE"), nullable=False, unique=True)
+    enrichment_route = Column(String(32), nullable=False, default="deep_enrich")
+    mechanism_notes = Column(JSONB_COMPAT, nullable=False, default=list)
+    downstream_exposure_hints = Column(JSONB_COMPAT, nullable=False, default=list)
+    contradiction_cues = Column(JSONB_COMPAT, nullable=False, default=list)
+    offset_cues = Column(JSONB_COMPAT, nullable=False, default=list)
+    theme_affinity_hints = Column(JSONB_COMPAT, nullable=False, default=list)
+    metadata_json = Column(JSONB_COMPAT, nullable=False, default=dict)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+
+    event = relationship("Event", back_populates="deep_enrichment")
 
 
 class EntityMention(Base):

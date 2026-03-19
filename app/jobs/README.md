@@ -20,6 +20,7 @@ Ownership note:
 |---|---|---|---|
 | `backfill_telegram_raw_messages` | `python -m app.jobs.backfill_telegram_raw_messages --limit 100` | Pulls the most recent Telegram messages and inserts them into `raw_messages` through the ingest pipeline. | `TG_API_ID`, `TG_API_HASH`, `TG_SESSION_NAME`, `TG_SOURCE_CHANNEL`, `DATABASE_URL` |
 | `run_phase2_extraction` | `python -m app.jobs.run_phase2_extraction` | Runs one phase2 extraction batch and writes extraction, triage, and event updates to DB. | `PHASE2_EXTRACTION_ENABLED=true`, `OPENAI_API_KEY`, `DATABASE_URL` |
+| `run_deep_enrichment` | `python -m app.jobs.run_deep_enrichment` | Runs one selective Pass B deep enrichment batch for deterministic `deep_enrich` candidates. | `DATABASE_URL` |
 | `run_digest` | `python -m app.jobs.run_digest` | Builds/publishes the digest from current event data. | `DATABASE_URL` (and digest delivery vars if publishing) |
 | `run_theme_batch` | `python -m app.jobs.run_theme_batch --theme energy_to_agri_inputs --cadence daily` | Runs one deterministic thematic batch window and persists run/evidence/assessment/card/brief artifacts. | `DATABASE_URL` |
 | `test_openai_extract` | `python -m app.jobs.test_openai_extract` | Smoke-tests the OpenAI extraction call and prints validated JSON output. | `PHASE2_EXTRACTION_ENABLED=true`, `OPENAI_API_KEY` |
@@ -28,6 +29,7 @@ Ownership note:
 | `reset_dev_schema` | `python -m app.jobs.reset_dev_schema` | Drops and recreates the full DB schema for a clean dev reset. | `DATABASE_URL` |
 | `adopt_stability_contracts` | `python -m app.jobs.adopt_stability_contracts` | Backfills replay/identity hashes, audits duplicate event identities, and can optionally merge exact duplicates/apply unique indexes. | `DATABASE_URL` |
 | `adopt_theme_batch_schema` | `python -m app.jobs.adopt_theme_batch_schema` | Non-destructively creates/ensures additive theme-batch tables/indexes. | `DATABASE_URL` |
+| `adopt_structured_event_schema` | `python -m app.jobs.adopt_structured_event_schema` | Non-destructively creates/ensures additive structured-event tables/indexes and route-column adoption. | `DATABASE_URL` |
 
 ## Job-specific usage
 
@@ -104,9 +106,10 @@ python -m app.jobs.adopt_stability_contracts --merge-exact --apply-unique-indexe
 ## Practical run order (local)
 
 1. `python -m app.jobs.run_phase2_extraction`
-2. `python -m app.jobs.inspect_pipeline --limit 20`
-3. `python -m app.jobs.run_digest`
-4. `python -m app.jobs.run_theme_batch --theme energy_to_agri_inputs --cadence daily`
+2. `python -m app.jobs.run_deep_enrichment`
+3. `python -m app.jobs.inspect_pipeline --limit 20`
+4. `python -m app.jobs.run_digest`
+5. `python -m app.jobs.run_theme_batch --theme energy_to_agri_inputs --cadence daily`
 
 ## Phase2 replay/content reuse knobs
 

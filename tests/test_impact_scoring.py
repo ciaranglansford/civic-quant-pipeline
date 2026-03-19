@@ -16,6 +16,8 @@ def _extraction(
     keywords: list[str] | None = None,
     tickers: list[str] | None = None,
     market_stats: list[MarketStat] | None = None,
+    tags: list[dict[str, object]] | None = None,
+    impact_inputs: dict[str, list[str]] | None = None,
 ) -> ExtractionJson:
     return ExtractionJson(
         topic=topic,  # type: ignore[arg-type]
@@ -38,6 +40,8 @@ def _extraction(
         keywords=keywords or [],
         event_core=None,
         event_fingerprint="f",
+        tags=tags or [],
+        impact_inputs=impact_inputs or {},
     )
 
 
@@ -53,8 +57,18 @@ def test_no_shock_blocks_top_band_even_with_high_raw_score():
     out = calibrate_impact(extraction)
     assert out.raw_llm_score == 98.0
     assert out.calibrated_score < 80.0
+    assert out.enrichment_route in {"store_only", "index_only"}
     assert "impact:no_shock_top_band_block" in out.rules_fired
     assert out.score_breakdown["score_band_computed_after_rules"] is True
+    components = out.score_breakdown["components"]
+    assert set(components.keys()) == {
+        "severity",
+        "economic_relevance",
+        "propagation_potential",
+        "specificity",
+        "novelty_signal",
+        "strategic_relevance",
+    }
 
 
 def test_local_incident_cap_applies_regardless_of_raw_score():
@@ -70,6 +84,7 @@ def test_local_incident_cap_applies_regardless_of_raw_score():
     out = calibrate_impact(extraction)
     assert out.raw_llm_score == 95.0
     assert out.calibrated_score <= 40.0
+    assert out.enrichment_route == "store_only"
     assert "impact:local_incident_cap_40" in out.rules_fired
 
 
@@ -88,8 +103,37 @@ def test_top_band_requires_shock_and_transmission():
     out = calibrate_impact(extraction)
     assert out.calibrated_score >= 80.0
     assert out.score_band == "top"
+    assert out.enrichment_route == "deep_enrich"
     assert "major_macroeconomic_surprise" in out.shock_flags
     assert out.score_breakdown["transmission_criteria_met"] is True
+
+
+def test_route_assignment_is_deterministic_across_repeated_runs():
+    extraction = _extraction(
+        topic="commodities",
+        summary="Export restriction disrupts logistics for oil shipments.",
+        impact=71.0,
+        breaking_window="1h",
+        is_breaking=True,
+        keywords=["export restriction", "oil", "logistics"],
+        market_stats=[MarketStat(label="Brent", value=2.2, unit="%", context="move")],
+        tags=[
+            {"tag_type": "strategic", "tag_value": "supply_risk", "tag_source": "observed", "confidence": 0.8}
+        ],
+        impact_inputs={
+            "severity_cues": ["restriction"],
+            "economic_relevance_cues": ["oil"],
+            "propagation_potential_cues": ["logistics"],
+            "specificity_cues": ["shipment"],
+            "novelty_cues": ["new restriction"],
+            "strategic_tag_hits": ["supply_risk"],
+        }
+    )
+    first = calibrate_impact(extraction)
+    second = calibrate_impact(extraction)
+    assert first.calibrated_score == second.calibrated_score
+    assert first.enrichment_route == second.enrichment_route
+    assert first.score_breakdown["components"] == second.score_breakdown["components"]
 
 
 def test_distribution_metrics_include_percentiles_and_thresholds():

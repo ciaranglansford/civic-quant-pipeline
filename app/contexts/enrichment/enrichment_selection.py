@@ -135,23 +135,14 @@ def evaluate_enrichment_selection(
     novelty_state = "novel"
     cluster_key = _novelty_cluster_key(extraction)
 
-    transmission_met = bool(calibration.score_breakdown.get("transmission_criteria_met"))
-    has_shock = len(calibration.shock_flags) > 0
-
-    eligible = False
-    if calibration.calibrated_score >= 80.0 and has_shock and transmission_met and triage_action in {"promote", "update"}:
-        eligible = True
-        reasons.append("enrichment:eligible_top_band_shock")
-    elif (
-        calibration.calibrated_score >= 70.0
-        and triage_action == "promote"
-        and has_shock
-        and extraction.is_breaking
-    ):
-        eligible = True
-        reasons.append("enrichment:eligible_breaking_shock")
-    else:
-        reasons.append("enrichment:not_eligible_threshold_or_context")
+    route = calibration.enrichment_route
+    reasons.append(f"enrichment:route:{route}")
+    eligible = route == "deep_enrich"
+    if not eligible:
+        reasons.append("enrichment:not_eligible_route")
+    if triage_action == "archive":
+        reasons.append("enrichment:triage_archive_block")
+        eligible = False
 
     if existing_event_id is not None:
         novelty_state = "blocked_event_lineage"
@@ -227,6 +218,7 @@ def select_and_store_enrichment_candidate(
     row.reason_codes = selection.reason_codes
     row.novelty_state = selection.novelty_state
     row.novelty_cluster_key = selection.novelty_cluster_key
+    row.enrichment_route = calibration.enrichment_route
     row.calibrated_score = float(calibration.calibrated_score)
     row.raw_llm_score = float(calibration.raw_llm_score)
     row.score_band = calibration.score_band

@@ -209,7 +209,7 @@ def test_phase2_processes_message_and_is_idempotent(monkeypatch, client: TestCli
         assert extraction.canonical_payload_json is not None
         assert extraction.canonical_payload_json["entities"]["countries"] == ["United States"]
         assert extraction.canonical_payload_json["affected_countries_first_order"] == ["United States"]
-        assert extraction.prompt_version == "extraction_agent_v3"
+        assert extraction.prompt_version == "extraction_agent_v4"
         assert extraction.metadata_json["used_openai"] is True
         assert extraction.metadata_json["openai_model"] == "gpt-4o-mini"
         assert extraction.metadata_json["openai_response_id"] == "resp_test_1"
