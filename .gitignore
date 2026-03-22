@@ -19,9 +19,14 @@ __pycache__/
 *.sqlite-shm
 *.log
 
-# Local tooling / agent state
-# `.agents/` is intentionally versioned for shared skills.
+# Shared Codex setup should be versioned
+!.agents/
+!.agents/**
+
+# Ignore local Codex state by default
 .codex/*
+
+# But keep shared project config and shared agents
 !.codex/config.toml
 !.codex/agents/
 !.codex/agents/**
