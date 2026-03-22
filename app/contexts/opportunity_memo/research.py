@@ -144,10 +144,8 @@ class OpenAiOpportunityResearchProvider:
         )
         user_text = json.dumps(prompt_payload, ensure_ascii=True)
 
-        request_payload = {
+        base_payload = {
             "model": model_name,
-            "text": {"format": {"type": "json_object"}},
-            "tools": [{"type": "web_search_preview"}],
             "input": [
                 {
                     "role": "system",
@@ -159,27 +157,40 @@ class OpenAiOpportunityResearchProvider:
                 },
             ],
         }
+        payload_candidates = [
+            {**base_payload, "tools": [{"type": "web_search_preview"}]},
+            {**base_payload, "tools": [{"type": "web_search"}]},
+        ]
 
         last_error: Exception | None = None
+        last_http_detail = ""
         for attempt in range(self.max_retries + 1):
-            started_at = time.perf_counter()
-            try:
-                with httpx.Client(timeout=self.timeout_seconds) as client:
-                    http_response = client.post(self.endpoint, headers=headers, json=request_payload)
-                http_response.raise_for_status()
-                body = http_response.json()
-                raw_text = _extract_output_text(body)
-                latency_ms = int((time.perf_counter() - started_at) * 1000)
-                return OpenAiResearchResponse(
-                    model_name=str(body.get("model") or model_name),
-                    response_id=body.get("id"),
-                    latency_ms=latency_ms,
-                    retries=attempt,
-                    raw_text=raw_text,
-                )
-            except (httpx.HTTPError, ValueError, KeyError, IndexError, json.JSONDecodeError) as exc:
-                last_error = exc
+            for request_payload in payload_candidates:
+                started_at = time.perf_counter()
+                try:
+                    with httpx.Client(timeout=self.timeout_seconds) as client:
+                        http_response = client.post(self.endpoint, headers=headers, json=request_payload)
+                    if http_response.status_code >= 400:
+                        body_text = (http_response.text or "").strip()
+                        last_http_detail = body_text[:800]
+                        http_response.raise_for_status()
+                    body = http_response.json()
+                    raw_text = _extract_output_text(body)
+                    latency_ms = int((time.perf_counter() - started_at) * 1000)
+                    return OpenAiResearchResponse(
+                        model_name=str(body.get("model") or model_name),
+                        response_id=body.get("id"),
+                        latency_ms=latency_ms,
+                        retries=attempt,
+                        raw_text=raw_text,
+                    )
+                except (httpx.HTTPError, ValueError, KeyError, IndexError, json.JSONDecodeError) as exc:
+                    last_error = exc
 
+        if last_http_detail:
+            raise OpportunityResearchError(
+                f"openai research retrieval failed after retries: {type(last_error).__name__}; detail={last_http_detail}"
+            )
         raise OpportunityResearchError(
             f"openai research retrieval failed after retries: {type(last_error).__name__}"
         )
@@ -222,10 +233,15 @@ def _normalize_sources(
     retrieved_at: datetime,
     fallback_queries: list[str],
 ) -> list[ExternalEvidenceSource]:
+    parsed_payload: dict | None = None
     try:
-        payload = json.loads(raw_text)
-    except json.JSONDecodeError as exc:
-        raise OpportunityResearchError(f"Research provider did not return valid JSON: {exc}") from exc
+        candidate = json.loads(raw_text)
+        if isinstance(candidate, dict):
+            parsed_payload = candidate
+    except json.JSONDecodeError:
+        parsed_payload = None
+
+    payload = parsed_payload or _extract_json_object(raw_text)
 
     if not isinstance(payload, dict):
         raise OpportunityResearchError("Research provider payload must be a JSON object")
@@ -281,6 +297,19 @@ def _normalize_sources(
     return normalized
 
 
+def _extract_json_object(raw_text: str) -> dict | None:
+    start = raw_text.find("{")
+    end = raw_text.rfind("}")
+    if start < 0 or end <= start:
+        return None
+    candidate_text = raw_text[start : end + 1]
+    try:
+        candidate = json.loads(candidate_text)
+    except json.JSONDecodeError:
+        return None
+    return candidate if isinstance(candidate, dict) else None
+
+
 def build_research_plan(input_pack: OpportunityMemoInputPack) -> OpportunityResearchPlan:
     driver_key = (
         input_pack.selected_primary_driver.driver_key
@@ -289,16 +318,19 @@ def build_research_plan(input_pack: OpportunityMemoInputPack) -> OpportunityRese
     )
 
     top_entity = input_pack.supporting_entities[0]["value"] if input_pack.supporting_entities else input_pack.topic
+    driver_terms = driver_key.replace("_", " ")
     queries = [
-        f"{input_pack.topic} {driver_key} market impact latest",
-        f"{input_pack.topic} {top_entity} pricing and supply context",
-        f"{input_pack.topic} investment risks and positioning watchpoints",
+        f"{input_pack.topic} {driver_terms} quantified market data spread change percent latest",
+        f"{input_pack.topic} {top_entity} outage flows storage import export numeric impact",
+        f"{input_pack.topic} trade expression futures options basis curve risk premium",
+        f"{input_pack.topic} invalidation triggers watchpoints policy timeline data",
     ]
 
     needs = [
         ResearchNeed(need_type="confirmation", detail="Confirm core claims linked to the primary driver."),
+        ResearchNeed(need_type="quantification", detail="Collect source-backed numeric facts usable in quantified evidence points."),
         ResearchNeed(need_type="context", detail="Add market context around pricing, supply-demand, and positioning."),
-        ResearchNeed(need_type="examples", detail="Collect concrete examples or data points to support action path and risks."),
+        ResearchNeed(need_type="expression", detail="Find evidence for concrete exposure routes and invalidation triggers."),
     ]
 
     return OpportunityResearchPlan(

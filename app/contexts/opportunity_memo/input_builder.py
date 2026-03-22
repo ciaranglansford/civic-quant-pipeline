@@ -201,6 +201,127 @@ def _supporting_entities(topic_events: list[dict[str, Any]], *, limit: int = 10)
     ]
 
 
+def _topic_event_stats(
+    topic_events: list[dict[str, Any]],
+    *,
+    start_time: datetime,
+    end_time: datetime,
+) -> dict[str, float | int]:
+    if not topic_events:
+        return {
+            "event_count": 0,
+            "weighted_impact_score": 0.0,
+            "average_impact_score": 0.0,
+            "max_impact_score": 0.0,
+            "recent_event_count": 0,
+        }
+
+    total_span_seconds = max(1.0, (end_time - start_time).total_seconds())
+    weighted_impact = 0.0
+    for row in topic_events:
+        ts = row.get("event_time") or row.get("last_updated_at") or start_time
+        if not isinstance(ts, datetime):
+            ts = start_time
+        recency = (ts - start_time).total_seconds() / total_span_seconds
+        recency_weight = max(0.5, min(1.0, 0.5 + (0.5 * recency)))
+        weighted_impact += float(row.get("impact_score") or 0.0) * recency_weight
+
+    recent_cutoff = end_time - (end_time - start_time) / 3
+    recent_event_count = sum(
+        1
+        for row in topic_events
+        if (row.get("event_time") or row.get("last_updated_at") or start_time) >= recent_cutoff
+    )
+    impact_values = [float(row.get("impact_score") or 0.0) for row in topic_events]
+    return {
+        "event_count": len(topic_events),
+        "weighted_impact_score": round(weighted_impact, 4),
+        "average_impact_score": round(sum(impact_values) / float(len(impact_values)), 4),
+        "max_impact_score": round(max(impact_values), 4),
+        "recent_event_count": int(recent_event_count),
+    }
+
+
+def _driver_evidence_summary(
+    *,
+    selected_event_ids: list[int],
+    selected_driver: Any,
+) -> dict[str, Any]:
+    if selected_driver is None:
+        return {
+            "driver_key": None,
+            "supporting_event_count": 0,
+            "supporting_event_share": 0.0,
+            "supporting_event_ids": [],
+        }
+
+    supporting_ids = [int(event_id) for event_id in selected_driver.supporting_event_ids]
+    denominator = max(1, len(selected_event_ids))
+    return {
+        "driver_key": selected_driver.driver_key,
+        "supporting_event_count": len(supporting_ids),
+        "supporting_event_share": round(len(supporting_ids) / float(denominator), 6),
+        "supporting_event_ids": supporting_ids,
+    }
+
+
+def _supporting_fact_candidates(
+    topic_events: list[dict[str, Any]],
+    *,
+    max_items: int = 12,
+) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+    for row in topic_events:
+        event_id = int(row.get("id") or 0)
+        if event_id <= 0:
+            continue
+        summary = str(row.get("summary_1_sentence") or "").strip()
+        impact_score = float(row.get("impact_score") or 0.0)
+        if summary:
+            candidates.append(
+                {
+                    "fact_key": f"event_{event_id}_summary",
+                    "fact_text": f"Event {event_id} impact score {impact_score:.1f}: {summary}",
+                    "internal_event_ids": [event_id],
+                    "numeric_value": round(impact_score, 2),
+                    "unit": "impact_score",
+                    "source_hint": "event_layer",
+                }
+            )
+
+        payload = row.get("latest_extraction_payload")
+        if not isinstance(payload, dict):
+            continue
+        market_stats = payload.get("market_stats")
+        if not isinstance(market_stats, list):
+            continue
+        for stat_idx, stat in enumerate(market_stats):
+            if not isinstance(stat, dict):
+                continue
+            label = str(stat.get("label") or "").strip()
+            value = stat.get("value")
+            unit = str(stat.get("unit") or "").strip()
+            context = str(stat.get("context") or "").strip()
+            if not label or not isinstance(value, (int, float)):
+                continue
+            candidates.append(
+                {
+                    "fact_key": f"event_{event_id}_market_stat_{stat_idx}",
+                    "fact_text": (
+                        f"Event {event_id} market stat {label}: {float(value):.3f}"
+                        f"{(' ' + unit) if unit else ''}{(' (' + context + ')') if context else ''}."
+                    ),
+                    "internal_event_ids": [event_id],
+                    "numeric_value": float(value),
+                    "unit": unit or None,
+                    "source_hint": "event_layer",
+                }
+            )
+
+    candidates.sort(key=lambda row: (row.get("fact_key") or ""))
+    return candidates[: max(1, max_items)]
+
+
 def build_opportunity_memo_input_pack(
     db: Session,
     *,
@@ -237,6 +358,12 @@ def build_opportunity_memo_input_pack(
         candidate_driver_groups=candidate_drivers,
         selected_primary_driver=selected_driver,
         supporting_entities=_supporting_entities(topic_events),
+        topic_event_stats=_topic_event_stats(topic_events, start_time=start_time, end_time=end_time),
+        driver_evidence_summary=_driver_evidence_summary(
+            selected_event_ids=selected_event_ids,
+            selected_driver=selected_driver,
+        ),
+        supporting_fact_candidates=_supporting_fact_candidates(topic_events),
         selection_diagnostics=MemoSelectionDiagnostics(
             topic_score=float(topic_score),
             selection_reason=selection_reason,

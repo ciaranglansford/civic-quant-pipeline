@@ -83,6 +83,10 @@ Possible run states:
 - `completed`
 - `delivery_failed`
 
+Validation note:
+- structurally valid but generic sector commentary is rejected (`validation_failed`)
+- memo must include concrete target/expression and quantified evidence points
+
 ### `clear_all_but_raw_messages`
 
 PowerShell:

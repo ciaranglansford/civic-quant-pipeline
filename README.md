@@ -15,6 +15,7 @@ Truth model:
 - Canonical digest workflow (`app/digest/*`)
 - Deterministic theme batch workflow (`app/workflows/theme_batch_pipeline.py`)
 - Opportunity memo workflow (`app/workflows/opportunity_memo_pipeline.py`)
+  - on-demand, single-topic, investable-thesis memo with hard quality + traceability validation
 
 ## Quick Start
 

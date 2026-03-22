@@ -5,7 +5,7 @@ import logging
 from dotenv import load_dotenv
 from sqlalchemy import inspect
 
-from ..db import Base, engine
+from ..db import engine, init_db
 
 
 logging.basicConfig(level=logging.INFO)
@@ -24,7 +24,7 @@ EXPECTED_TABLES = (
 def main() -> None:
     load_dotenv()
 
-    Base.metadata.create_all(bind=engine)
+    init_db()
     inspector = inspect(engine)
     existing = set(inspector.get_table_names())
     missing = sorted(set(EXPECTED_TABLES) - existing)

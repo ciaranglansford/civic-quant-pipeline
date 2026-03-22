@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
+from typing import Literal
 
 from pydantic import BaseModel, Field, HttpUrl
 
@@ -82,6 +83,9 @@ class OpportunityMemoInputPack(BaseModel):
     candidate_driver_groups: list[DriverCandidate] = Field(default_factory=list)
     selected_primary_driver: DriverCandidate | None = None
     supporting_entities: list[dict[str, str]] = Field(default_factory=list)
+    topic_event_stats: dict[str, float | int] = Field(default_factory=dict)
+    driver_evidence_summary: dict[str, Any] = Field(default_factory=dict)
+    supporting_fact_candidates: list[dict[str, Any]] = Field(default_factory=list)
     selection_diagnostics: MemoSelectionDiagnostics
 
 
@@ -127,30 +131,39 @@ class MemoTraceability(BaseModel):
 
 
 class OpportunityMemoStructuredArtifact(BaseModel):
-    title: str
-    thesis: str
-    opportunity_target: str
-    background: str
-    primary_driver: str
+    title: str = Field(min_length=1)
+    core_thesis_one_liner: str = Field(min_length=1)
+    opportunity_target: str = Field(min_length=1)
+    market_setup: str = Field(min_length=1)
+    background: str = Field(min_length=1)
+    primary_driver: str = Field(min_length=1)
     supporting_developments: list[str] = Field(default_factory=list)
-    why_now: str
-    action_path: str
+    why_now: str = Field(min_length=1)
+    why_this_is_an_opportunity: str = Field(min_length=1)
+    trade_expression: str = Field(min_length=1)
+    quantified_evidence_points: list[str] = Field(default_factory=list)
     risks: list[str] = Field(default_factory=list)
+    invalidation_triggers: list[str] = Field(default_factory=list)
     watchpoints: list[str] = Field(default_factory=list)
-    conclusion: str
+    confidence_level: Literal["low", "medium", "high"]
+    conclusion: str = Field(min_length=1)
     traceability: MemoTraceability
 
     def paragraph_keys(self) -> list[str]:
         keys: list[str] = [
-            "thesis",
+            "core_thesis_one_liner",
+            "market_setup",
             "background",
             "primary_driver",
             "why_now",
-            "action_path",
+            "why_this_is_an_opportunity",
+            "trade_expression",
             "conclusion",
         ]
         keys.extend(f"supporting_developments[{idx}]" for idx, _ in enumerate(self.supporting_developments))
+        keys.extend(f"quantified_evidence_points[{idx}]" for idx, _ in enumerate(self.quantified_evidence_points))
         keys.extend(f"risks[{idx}]" for idx, _ in enumerate(self.risks))
+        keys.extend(f"invalidation_triggers[{idx}]" for idx, _ in enumerate(self.invalidation_triggers))
         keys.extend(f"watchpoints[{idx}]" for idx, _ in enumerate(self.watchpoints))
         return keys
 

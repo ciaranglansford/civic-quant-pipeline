@@ -5,6 +5,7 @@
 Opportunity Memo v1 note:
 - no new HTTP route is added for v1
 - primary entrypoint is CLI (`python -m app.jobs.run_opportunity_memo ...`)
+- artifact contract is investable-thesis structured output with mandatory quantified evidence and traceability
 
 ### `GET /health`
 

@@ -96,6 +96,7 @@ python -m app.jobs.run_phase2_extraction
   - Topic override is optional (`--topic` from constrained topic set).
 - After:
   - `opportunity_memo_runs` records explicit state (`running`, `no_topic_found`, `validation_failed`, `completed`, or `delivery_failed`).
+  - Generic/non-investable memo outputs are rejected as `validation_failed` even if structurally well-formed.
   - Successful memo builds persist:
     - `opportunity_memo_artifacts`
     - `opportunity_memo_input_events`

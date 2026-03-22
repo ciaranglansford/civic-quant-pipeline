@@ -10,6 +10,8 @@ Opportunity Memo v1 note:
 - no new HTTP route is added for v1
 - primary interface is CLI job execution
 - memo-oriented read models are exposed through DB MCP read-only tools
+- canonical memo artifact is investable-thesis structured JSON with required fields:
+  - `core_thesis_one_liner`, `opportunity_target`, `market_setup`, `why_this_is_an_opportunity`, `trade_expression`, `quantified_evidence_points`, `invalidation_triggers`, `confidence_level`, and strict traceability mappings
 
 ## Current API Surface vs Internal Pipeline Stages
 

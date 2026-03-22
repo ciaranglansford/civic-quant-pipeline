@@ -42,6 +42,12 @@ Digest composition details:
 - Memo writer evidence is limited to:
   - deterministic internal event evidence
   - normalized external evidence sources
+- Memo artifact contract is investable-thesis oriented, not generic commentary:
+  - concrete `opportunity_target`
+  - concrete `trade_expression`
+  - required `quantified_evidence_points`
+  - required `why_this_is_an_opportunity`
+- Generic sector commentary fails hard validation (`validation_failed`).
 - Memo artifact persistence occurs before Telegram delivery attempt.
 
 ## Schema Adoption (Digest Refactor)

@@ -124,13 +124,17 @@ MIN_SUPPORTING_EVENTS_DEFAULT: Final[int] = 3
 MIN_EXTERNAL_SOURCES_DEFAULT: Final[int] = 3
 
 TRACEABILITY_REQUIRED_SECTION_KEYS: Final[set[str]] = {
-    "thesis",
+    "core_thesis_one_liner",
+    "market_setup",
     "background",
     "primary_driver",
     "supporting_developments",
     "why_now",
-    "action_path",
+    "why_this_is_an_opportunity",
+    "trade_expression",
+    "quantified_evidence_points",
     "risks",
+    "invalidation_triggers",
     "watchpoints",
     "conclusion",
 }

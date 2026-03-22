@@ -29,6 +29,7 @@ See `app/jobs/README.md` for the complete list (including schema adoption/reset 
 
 - Digest artifact must be persisted before publish attempt.
 - Opportunity memo artifact must be persisted before delivery attempt.
+- Opportunity memo hard validation rejects generic/non-investable commentary even if structurally well-formed.
 - Phase2 and deep enrichment each use `processing_locks` to avoid overlapping runs.
 - Phase2 admin trigger requires `PHASE2_ADMIN_TOKEN` and `x-admin-token` header.
 

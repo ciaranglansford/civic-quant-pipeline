@@ -1,43 +1,40 @@
-# Opportunity Memo v1
+# Opportunity Memo v1 (Investable Thesis Contract)
 
 ## Purpose
 
-Opportunity Memo v1 is a CLI-first, on-demand workflow that generates one client-facing opportunity memo for one topic within a custom UTC half-open window `[start, end)`.
+Opportunity Memo v1 is a CLI-first, on-demand workflow that produces one **single-topic, client-facing investment memo** for a UTC half-open window `[start, end)`.
 
-Target reader:
-- financially literate paying client
-- needs actionable market framing, not generic commentary
+The product goal is not generic commentary. It is a concrete, evidence-backed thesis memo that answers:
 
-## v1 Scope
+- what the opportunity is
+- what target/exposure it relates to
+- why now
+- why it is actionable financially
+- how a financially literate client might express the view
+- what invalidates it and what to monitor next
+
+## Scope and Non-Goals
 
 Included:
-- deterministic single-topic selection (or manual topic override)
+- deterministic topic ranking (or manual topic override)
 - deterministic internal memo input pack from event-layer data
 - deterministic primary-driver selection
-- external web research enrichment using normalized source records
-- structured memo generation with required sections
-- hard validation gates (including paragraph-level traceability)
-- DB persistence for runs/artifacts/evidence/delivery outcomes
-- Telegram delivery attempt with memo-specific rendering
-- read-only MCP report tools for memo-oriented read models
+- external web enrichment through a normalized source contract
+- strict structured writer contract
+- hard quality validation (not only structural validation)
+- persistence + Telegram delivery with explicit run states
 
-Excluded (non-goals):
+Excluded:
 - `get_previous_memo_context`
-- fuzzy/historical novelty frameworks
 - multi-topic memo generation
+- additional providers (OpenAI-only default seam in v1)
 - new HTTP endpoint
-- multi-provider retrieval abstraction
-- use of `raw_messages` as memo evidence
+- use of `raw_messages` for memo composition
 
-## How It Relates To Existing Systems
-
-- Digest and theme-batch systems remain unchanged and continue to serve scheduled reporting.
-- Opportunity Memo v1 is additive and on-demand.
-- It follows the same design principle: LLM for interpretation/writing, code for deterministic state and selection.
-
-## CLI Contract (Primary Entrypoint)
+## CLI Entrypoints
 
 ```bash
+python -m app.jobs.adopt_opportunity_memo_schema
 python -m app.jobs.run_opportunity_memo --start <iso-utc> --end <iso-utc> [--topic <topic>]
 ```
 
@@ -48,15 +45,9 @@ python -m app.jobs.run_opportunity_memo --start 2026-03-15T00:00:00Z --end 2026-
 python -m app.jobs.run_opportunity_memo --start 2026-03-15T00:00:00Z --end 2026-03-22T00:00:00Z --topic natural_gas
 ```
 
-Schema adoption utility:
+## Deterministic Topic Logic
 
-```bash
-python -m app.jobs.adopt_opportunity_memo_schema
-```
-
-## Topic Universe
-
-The v1 topic set is fixed in code (`OPPORTUNITY_TOPICS`):
+Topic universe is fixed:
 
 - `natural_gas`
 - `lng`
@@ -68,9 +59,7 @@ The v1 topic set is fixed in code (`OPPORTUNITY_TOPICS`):
 - `carbon`
 - `coal`
 
-## Deterministic Topic Mapping
-
-Topic mapping precedence is strict (`app/contexts/opportunity_memo/topic_mapping.py`):
+Topic mapping precedence is strict:
 
 1. `event_tags`
 2. `event_relations`
@@ -79,12 +68,12 @@ Topic mapping precedence is strict (`app/contexts/opportunity_memo/topic_mapping
 
 Rules:
 - no `raw_messages`
-- no hidden LLM classification
-- every mapped event includes diagnostics (`source_layer`, matched fields, reason trail, final topic)
+- no hidden LLM topic classification
+- diagnostics are returned (`source_layer`, matched fields, reason trail)
 
-## Deterministic Topic Ranking
+## Topic Ranking and Novelty
 
-Auto-selection uses:
+Auto-selection score:
 
 ```text
 topic_score =
@@ -95,52 +84,36 @@ topic_score =
 + 0.10 * normalized_actionability
 ```
 
-v1 novelty is narrow:
-- compares current-topic event fingerprint identities against immediately prior equivalent window
-- identity precedence: `event_identity_fingerprint_v2` -> `claim_hash` -> `event_id`
+Novelty is narrow and deterministic:
+- compare selected-topic event identities against immediately prior equivalent window
+- identity precedence:
+  - `event_identity_fingerprint_v2`
+  - `claim_hash`
+  - `event_id`
 - optional simple recent-same-topic memo penalty
 
-If top topic score is below threshold, run exits with `no_topic_found` and does not publish.
+If no topic crosses threshold, run exits as `no_topic_found` and does not publish.
 
-## Internal Memo Input Pack
+## Internal Input Pack (Deterministic)
 
-The workflow builds a deterministic internal memo input pack before writing.
+Writer receives deterministic internal context including:
 
-Key fields:
-- `topic`
-- `window`
 - `selected_event_ids`
 - `event_timeline`
-- `candidate_driver_groups`
 - `selected_primary_driver`
-- `supporting_entities`
-- `selection_diagnostics`
+- `topic_event_stats` (count/impact/recency summary)
+- `driver_evidence_summary`
+- `supporting_fact_candidates` (deterministic candidate facts)
 
-Important boundary:
+Boundary:
 - `selection_diagnostics` is orchestration/debug metadata only
-- writer evidence context uses only event evidence + normalized external evidence
+- writer evidence uses only internal event evidence + normalized external evidence
 
-## Primary Driver Selection
+## External Evidence Contract
 
-Exactly one primary driver is selected deterministically using scored driver groups.
-
-Driver score:
-
-```text
-driver_score =
-  0.40 * supporting_event_weight
-+ 0.25 * temporal_density
-+ 0.20 * entity_consistency
-+ 0.15 * external_confirmability_proxy
-```
-
-## External Research And Normalization
-
-The provider seam is intentionally narrow:
+Provider seam:
 - `OpportunityResearchProvider` protocol
-- v1 default implementation: `OpenAiOpportunityResearchProvider`
-
-Writer input uses normalized external evidence only (not raw provider payloads).
+- `OpenAiOpportunityResearchProvider` default implementation
 
 Normalized source shape:
 - `source_id`
@@ -153,69 +126,78 @@ Normalized source shape:
 - `claim_support_tags`
 - `url` (if available)
 
-## Writer Contract
+Raw provider payloads do not flow into memo writing logic.
 
-Memo output is structured JSON (`OpportunityMemoStructuredArtifact`), with required sections:
+## Memo Artifact Contract
+
+Canonical output is structured JSON (`OpportunityMemoStructuredArtifact`) with required fields:
 
 - `title`
-- `thesis`
+- `core_thesis_one_liner`
 - `opportunity_target`
+- `market_setup`
 - `background`
 - `primary_driver`
 - `supporting_developments`
 - `why_now`
-- `action_path`
+- `why_this_is_an_opportunity`
+- `trade_expression`
+- `quantified_evidence_points`
 - `risks`
+- `invalidation_triggers`
 - `watchpoints`
+- `confidence_level` (`low|medium|high`)
 - `conclusion`
 - `traceability`
 
-No markdown is used as canonical internal representation.
+## Traceability Rules (Hard)
 
-## Traceability Requirements
+These thesis-bearing sections must always be traceable:
 
-Paragraph-level traceability is mandatory for thesis-bearing sections:
-
-- `thesis`
+- `core_thesis_one_liner`
+- `market_setup`
 - `background`
 - `primary_driver`
 - `supporting_developments`
 - `why_now`
-- `action_path`
+- `why_this_is_an_opportunity`
+- `trade_expression`
+- `quantified_evidence_points`
 - `risks`
+- `invalidation_triggers`
 - `watchpoints`
 - `conclusion`
 
-Rules:
-- paragraph keys are explicit (`section` or `section[index]`)
-- each thesis-bearing paragraph must map to:
+Notes:
+- `title` is exempt
+- `confidence_level` is metadata-backed (not paragraph-traced)
+- each traced paragraph key maps to:
   - `internal_event_ids`
   - `external_source_ids`
 
-Exceptions:
-- `title` is exempt
-- `opportunity_target` may be lighter if short, but must remain supportable in artifact context
+## Hard Validation Gates (Quality + Structure)
 
-## Validation Gates
+Memo is rejected (`validation_failed`) if any hard rule fails, including:
 
-Hard failures suppress memo completion:
-- no topic above threshold (`no_topic_found`)
-- supporting event count below minimum
-- no primary driver selected
-- external sources below minimum
-- missing required memo sections
-- missing/invalid traceability for required sections
-- topic drift across unrelated topics
-- vague `action_path`
+- missing required sections
+- insufficient supporting events / external sources
+- missing primary driver
+- missing required traceability
+- invalid traceability source IDs
+- topic drift
+- generic `opportunity_target`
+- weak `core_thesis_one_liner`
+- generic `why_now`
+- vague `trade_expression`
+- generic `why_this_is_an_opportunity`
+- insufficient quantitative evidence in `quantified_evidence_points`
+- filler or low-substance list content
 
-Soft warnings:
-- weak source diversity
-- borderline score/novelty
-- partial contradiction handling
+This intentionally rejects broad sector commentary even if prose quality is high.
 
 ## Run States
 
-`opportunity_memo_runs.status` uses explicit states only:
+Persisted states:
 
 - `running`
 - `no_topic_found`
@@ -232,41 +214,47 @@ Tables:
 - `opportunity_memo_external_sources`
 - `opportunity_memo_deliveries`
 
-Persisted concepts include:
-- run window and selection metadata
-- selected topic + score
-- selected event IDs and event-level mapping diagnostics
-- selected primary driver
-- normalized external sources used
-- structured memo + traceability map
-- delivery attempts/outcomes
+Persisted values include:
+- window/topic/score/driver selection
+- memo JSON
+- traceability JSON
+- linked input events and external sources
+- delivery outcomes
 
-## Deterministic Hashes
+Hashes:
+- `input_hash`: deterministic hash of window/topic/event IDs/driver/settings
+- `canonical_hash`: deterministic hash of validated structured memo artifact
 
-Two explicit hashes are persisted:
+## Telegram Rendering
 
-- `input_hash`: canonical hash of window, selected topic, selected event IDs, selected primary driver, generation settings
-- `canonical_hash`: canonical hash of validated structured memo artifact
+Renderer is memo-specific and evidence-forward. It surfaces:
 
-## Telegram Delivery
+- core thesis
+- opportunity target
+- market setup
+- primary driver
+- quantified evidence points
+- why now
+- why this is an opportunity
+- trade expression
+- risks
+- invalidation triggers
+- watchpoints
+- confidence level
+- conclusion
 
-- Reuses existing Telegram transport/config seam
-- Uses memo-specific renderer (separate from digest formatting semantics)
-- Artifact is persisted before Telegram attempt
-- If Telegram fails after persistence, artifact remains and run is marked `delivery_failed`
+## MCP Read-Only Tools
 
-## MCP Read-Model Tools (Read-Only)
-
-Added DB MCP tools:
+Added memo-oriented read-model tools:
 
 1. `rank_topic_opportunities`
 2. `build_opportunity_memo_input`
 3. `get_topic_timeline`
 4. `get_topic_driver_pack`
 
-All remain read-only and return report-oriented shapes for memo orchestration/debugging.
+`get_previous_memo_context` is explicitly deferred in v1.
 
-## API Surface Note
+## API Surface
 
 Opportunity Memo v1 is CLI-first.
-- No new HTTP endpoint is added in v1.
+- no new HTTP endpoint in v1
