@@ -1,5 +1,7 @@
 # Architecture
 
+> Legacy sectioned architecture note retained for context. Prefer `docs/architecture.md` and `docs/system-flow.md` for current implementation truth.
+
 ## Purpose
 
 Define the pipeline architecture for a Telegram wire-bulletin intelligence system and clearly separate:

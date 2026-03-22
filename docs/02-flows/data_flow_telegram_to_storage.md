@@ -1,5 +1,7 @@
 ## Data Flow - Telegram Bulletin to Structured Intelligence
 
+> Legacy flow note retained for history. Prefer `docs/system-flow.md` for current implementation-truth flow.
+
 ### Purpose
 
 Describe staged processing for Telegram wire-bulletin inputs, with explicit separation of current implementation and target-state intent.

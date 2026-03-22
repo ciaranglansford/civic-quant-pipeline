@@ -1,5 +1,7 @@
 # Architecture Overview - Civicquant Intelligence Pipeline
 
+> Legacy concise overview retained for context. Prefer `docs/architecture.md` for current canonical module ownership and boundaries.
+
 ## Purpose
 
 Provide a concise implementation-truth overview of the current backend architecture.

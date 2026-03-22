@@ -1,5 +1,7 @@
 ## Schemas and Storage Model
 
+> Legacy sectioned schema reference retained for context. Prefer `docs/data-model.md` for current concise model contracts.
+
 ### Purpose
 
 Define the implemented storage contracts and semantics for the wire-bulletin pipeline.

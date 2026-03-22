@@ -1,5 +1,7 @@
 # Data Flow
 
+> Legacy staged flow document retained for context. Prefer `docs/system-flow.md` for current runtime-truth flow.
+
 ## Overview
 
 This document describes the runtime flow for Telegram wire-bulletin ingestion and processing.

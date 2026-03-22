@@ -1,5 +1,7 @@
 # Jobs Reference
 
+> Legacy sectioned job reference retained for context. Prefer `app/jobs/README.md` plus `docs/operations.md` for current job guidance.
+
 ## Purpose
 
 Quick reference for the scripts in `app/jobs/`: what each one does, how to run it, and what changes before/after execution.

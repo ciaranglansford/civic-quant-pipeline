@@ -1,5 +1,7 @@
 # Canonical Digest Pipeline
 
+> Legacy sectioned digest architecture note retained for context. Prefer `docs/system-flow.md` and `docs/operations.md` for current end-to-end behavior.
+
 ## Invariant
 
 No publish attempt occurs unless a digest artifact has already been persisted and committed.

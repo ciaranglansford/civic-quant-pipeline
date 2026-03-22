@@ -1,5 +1,7 @@
 ## Operations and Scheduling
 
+> Legacy sectioned runbook retained for context. Prefer `docs/operations.md`, `docs/local-development.md`, and `docs/troubleshooting.md` for current operational guidance.
+
 ### Purpose
 
 Primary local runbook for executing the wire-bulletin pipeline end-to-end and validating stage outputs.

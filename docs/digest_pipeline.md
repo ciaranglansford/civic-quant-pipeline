@@ -1,5 +1,7 @@
 # Digest Pipeline (Hybrid Deterministic + LLM)
 
+> Legacy deep-dive retained for context. Prefer `docs/system-flow.md`, `docs/operations.md`, and `docs/api.md` for current primary guidance.
+
 ## Purpose
 
 This document describes the current digest implementation in `app/digest/` after the synthesis refactor.

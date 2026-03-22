@@ -1,5 +1,7 @@
 # API and Interfaces
 
+> Legacy sectioned API reference retained for historical context. Prefer `docs/api.md` for current API/runtime interface truth.
+
 ## HTTP API Overview
 
 This API supports wire-bulletin ingestion and operational processing jobs.

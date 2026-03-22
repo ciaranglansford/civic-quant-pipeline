@@ -1,5 +1,7 @@
 # Civicquant Documentation Overview
 
+> Legacy sectioned overview snapshot. Prefer the canonical docs in `docs/README.md` (`architecture.md`, `system-flow.md`, `api.md`, and related root docs pages).
+
 ## Purpose
 
 This section explains what the system is, what is implemented now, and what the target architecture is intended to become.

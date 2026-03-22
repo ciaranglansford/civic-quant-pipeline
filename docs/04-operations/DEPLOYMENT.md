@@ -1,5 +1,7 @@
 # Deployment and Runtime Operations
 
+> Legacy sectioned deployment note retained for context. Prefer `docs/architecture.md`, `docs/configuration.md`, and `docs/operations.md`.
+
 ## Deployment Overview
 
 The system runs as multiple processes sharing one SQL database.
