@@ -74,4 +74,66 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "rank_topic_opportunities",
+        "description": "Rank constrained opportunity topics for a window using deterministic event-layer scoring.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "start_time": {"type": "string", "minLength": 1},
+                "end_time": {"type": "string", "minLength": 1},
+                "topic_universe": {
+                    "type": "array",
+                    "items": {"type": "string", "minLength": 1},
+                    "minItems": 1,
+                },
+                "limit": {"type": "integer", "minimum": 1, "maximum": 20, "default": 5},
+            },
+            "required": ["start_time", "end_time", "topic_universe"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "build_opportunity_memo_input",
+        "description": "Build deterministic internal memo input pack from event-layer data for one topic/window.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "start_time": {"type": "string", "minLength": 1},
+                "end_time": {"type": "string", "minLength": 1},
+                "topic": {"type": "string", "minLength": 1},
+            },
+            "required": ["start_time", "end_time", "topic"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "get_topic_timeline",
+        "description": "Return ordered event progression for a topic in a time window.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "start_time": {"type": "string", "minLength": 1},
+                "end_time": {"type": "string", "minLength": 1},
+                "topic": {"type": "string", "minLength": 1},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50},
+            },
+            "required": ["start_time", "end_time", "topic"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "get_topic_driver_pack",
+        "description": "Return deterministic driver groups and selected primary driver for a topic/window.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "start_time": {"type": "string", "minLength": 1},
+                "end_time": {"type": "string", "minLength": 1},
+                "topic": {"type": "string", "minLength": 1},
+            },
+            "required": ["start_time", "end_time", "topic"],
+            "additionalProperties": False,
+        },
+    },
 ]

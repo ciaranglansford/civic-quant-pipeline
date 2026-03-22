@@ -6,7 +6,7 @@ import re
 from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from difflib import SequenceMatcher
 from typing import Any
@@ -15,8 +15,16 @@ from dotenv import load_dotenv
 from sqlalchemy import bindparam, create_engine, text
 from sqlalchemy.engine import Connection, Engine, RowMapping, make_url
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session as OrmSession
 
 from app.config import get_settings
+from app.contexts.opportunity_memo import OPPORTUNITY_TOPICS
+from app.contexts.opportunity_memo.input_builder import (
+    build_opportunity_memo_input_pack,
+    load_event_snapshots,
+    rank_topic_candidates,
+    topic_timeline,
+)
 
 from .db_mcp_contracts import (
     APP_DB_URL_ENV_VAR,
@@ -82,6 +90,50 @@ class CivicquantDbMcpService:
             if not isinstance(max_rows, int):
                 raise ServiceError(code="invalid_arguments", message="'max_rows' must be an integer.")
             return self.run_readonly_sql(query=query, max_rows=max_rows)
+        if name == "rank_topic_opportunities":
+            start_time = self._required_datetime(arguments, "start_time")
+            end_time = self._required_datetime(arguments, "end_time")
+            topic_universe = self._required_topic_universe(arguments, "topic_universe")
+            limit = arguments.get("limit", 5)
+            if not isinstance(limit, int):
+                raise ServiceError(code="invalid_arguments", message="'limit' must be an integer.")
+            return self.rank_topic_opportunities(
+                start_time=start_time,
+                end_time=end_time,
+                topic_universe=topic_universe,
+                limit=limit,
+            )
+        if name == "build_opportunity_memo_input":
+            start_time = self._required_datetime(arguments, "start_time")
+            end_time = self._required_datetime(arguments, "end_time")
+            topic = self._required_topic(arguments, "topic")
+            return self.build_opportunity_memo_input(
+                start_time=start_time,
+                end_time=end_time,
+                topic=topic,
+            )
+        if name == "get_topic_timeline":
+            start_time = self._required_datetime(arguments, "start_time")
+            end_time = self._required_datetime(arguments, "end_time")
+            topic = self._required_topic(arguments, "topic")
+            limit = arguments.get("limit", 50)
+            if not isinstance(limit, int):
+                raise ServiceError(code="invalid_arguments", message="'limit' must be an integer.")
+            return self.get_topic_timeline(
+                start_time=start_time,
+                end_time=end_time,
+                topic=topic,
+                limit=limit,
+            )
+        if name == "get_topic_driver_pack":
+            start_time = self._required_datetime(arguments, "start_time")
+            end_time = self._required_datetime(arguments, "end_time")
+            topic = self._required_topic(arguments, "topic")
+            return self.get_topic_driver_pack(
+                start_time=start_time,
+                end_time=end_time,
+                topic=topic,
+            )
         raise ServiceError(code="unknown_tool", message=f"Unknown tool '{name}'.")
 
     def get_event(self, *, event_id: int) -> dict[str, Any]:
@@ -663,6 +715,178 @@ class CivicquantDbMcpService:
             "candidates": top_candidates,
         })
 
+    def rank_topic_opportunities(
+        self,
+        *,
+        start_time: datetime,
+        end_time: datetime,
+        topic_universe: list[str],
+        limit: int,
+    ) -> dict[str, Any]:
+        if start_time >= end_time:
+            raise ServiceError(code="invalid_arguments", message="'start_time' must be earlier than 'end_time'.")
+
+        with self._session() as db:
+            ranked = rank_topic_candidates(
+                db,
+                start_time=start_time,
+                end_time=end_time,
+                topic_universe=topic_universe,
+                limit=max(1, min(limit, 20)),
+                recent_memo_topics=set(),
+            )
+
+        return self._jsonify_payload(
+            {
+                "ok": True,
+                "database_url": self._masked_database_url,
+                "window": {
+                    "start_time": start_time.isoformat(),
+                    "end_time": end_time.isoformat(),
+                },
+                "topics": [row.model_dump(mode="json") for row in ranked],
+            }
+        )
+
+    def build_opportunity_memo_input(
+        self,
+        *,
+        start_time: datetime,
+        end_time: datetime,
+        topic: str,
+    ) -> dict[str, Any]:
+        if start_time >= end_time:
+            raise ServiceError(code="invalid_arguments", message="'start_time' must be earlier than 'end_time'.")
+
+        with self._session() as db:
+            ranked = rank_topic_candidates(
+                db,
+                start_time=start_time,
+                end_time=end_time,
+                topic_universe=[topic],
+                limit=1,
+                recent_memo_topics=set(),
+            )
+            topic_score = float(ranked[0].topic_score) if ranked else 0.0
+            topic_breakdown = (
+                ranked[0].breakdown.model_dump(mode="json")
+                if ranked
+                else {
+                    "normalized_event_count": 0.0,
+                    "normalized_weighted_impact": 0.0,
+                    "normalized_novelty": 0.0,
+                    "normalized_coherence": 0.0,
+                    "normalized_actionability": 0.0,
+                }
+            )
+            pack, _topic_events = build_opportunity_memo_input_pack(
+                db,
+                start_time=start_time,
+                end_time=end_time,
+                topic=topic,
+                topic_score=topic_score,
+                selection_reason="mcp_build_input",
+                topic_breakdown=topic_breakdown,
+            )
+
+        return self._jsonify_payload(
+            {
+                "ok": True,
+                "database_url": self._masked_database_url,
+                "input_pack": pack.model_dump(mode="json"),
+            }
+        )
+
+    def get_topic_timeline(
+        self,
+        *,
+        start_time: datetime,
+        end_time: datetime,
+        topic: str,
+        limit: int,
+    ) -> dict[str, Any]:
+        if start_time >= end_time:
+            raise ServiceError(code="invalid_arguments", message="'start_time' must be earlier than 'end_time'.")
+
+        with self._session() as db:
+            snapshots = load_event_snapshots(db, start_time=start_time, end_time=end_time)
+            timeline = topic_timeline(
+                snapshots=snapshots,
+                topic=topic,
+                limit=max(1, min(limit, 200)),
+            )
+
+        return self._jsonify_payload(
+            {
+                "ok": True,
+                "database_url": self._masked_database_url,
+                "window": {
+                    "start_time": start_time.isoformat(),
+                    "end_time": end_time.isoformat(),
+                },
+                "topic": topic,
+                "timeline": [row.model_dump(mode="json") for row in timeline],
+            }
+        )
+
+    def get_topic_driver_pack(
+        self,
+        *,
+        start_time: datetime,
+        end_time: datetime,
+        topic: str,
+    ) -> dict[str, Any]:
+        if start_time >= end_time:
+            raise ServiceError(code="invalid_arguments", message="'start_time' must be earlier than 'end_time'.")
+
+        with self._session() as db:
+            ranked = rank_topic_candidates(
+                db,
+                start_time=start_time,
+                end_time=end_time,
+                topic_universe=[topic],
+                limit=1,
+                recent_memo_topics=set(),
+            )
+            topic_score = float(ranked[0].topic_score) if ranked else 0.0
+            topic_breakdown = (
+                ranked[0].breakdown.model_dump(mode="json")
+                if ranked
+                else {
+                    "normalized_event_count": 0.0,
+                    "normalized_weighted_impact": 0.0,
+                    "normalized_novelty": 0.0,
+                    "normalized_coherence": 0.0,
+                    "normalized_actionability": 0.0,
+                }
+            )
+            pack, _topic_events = build_opportunity_memo_input_pack(
+                db,
+                start_time=start_time,
+                end_time=end_time,
+                topic=topic,
+                topic_score=topic_score,
+                selection_reason="mcp_driver_pack",
+                topic_breakdown=topic_breakdown,
+            )
+
+        return self._jsonify_payload(
+            {
+                "ok": True,
+                "database_url": self._masked_database_url,
+                "topic": topic,
+                "drivers": [
+                    row.model_dump(mode="json")
+                    for row in pack.candidate_driver_groups
+                ],
+                "selected_primary_driver": (
+                    pack.selected_primary_driver.model_dump(mode="json")
+                    if pack.selected_primary_driver is not None
+                    else None
+                ),
+            }
+        )
+
     def run_readonly_sql(self, *, query: str, max_rows: int = READONLY_SQL_DEFAULT_MAX_ROWS) -> dict[str, Any]:
         safe_query = self._validate_readonly_sql(query=query)
         row_cap = max(1, min(max_rows, READONLY_SQL_HARD_MAX_ROWS))
@@ -728,6 +952,12 @@ class CivicquantDbMcpService:
                 },
             ) from exc
 
+    @contextmanager
+    def _session(self) -> OrmSession:
+        with self._connect() as conn:
+            with OrmSession(bind=conn, future=True) as db:
+                yield db
+
     def _fetchone(
         self,
         conn: Connection,
@@ -758,6 +988,56 @@ class CivicquantDbMcpService:
                 message=f"'{key}' must be a positive integer.",
             )
         return value
+
+    def _required_datetime(self, arguments: dict[str, Any], key: str) -> datetime:
+        raw_value = arguments.get(key)
+        if not isinstance(raw_value, str) or not raw_value.strip():
+            raise ServiceError(code="invalid_arguments", message=f"'{key}' must be a datetime string.")
+        value = raw_value.strip()
+        if value.endswith("Z"):
+            value = value[:-1] + "+00:00"
+        try:
+            parsed = datetime.fromisoformat(value)
+        except ValueError as exc:
+            raise ServiceError(code="invalid_arguments", message=f"'{key}' must be ISO datetime.") from exc
+        if parsed.tzinfo is not None:
+            parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+        return parsed
+
+    def _required_topic(self, arguments: dict[str, Any], key: str) -> str:
+        raw_value = arguments.get(key)
+        if not isinstance(raw_value, str) or not raw_value.strip():
+            raise ServiceError(code="invalid_arguments", message=f"'{key}' must be a non-empty string.")
+        topic = raw_value.strip()
+        if topic not in OPPORTUNITY_TOPICS:
+            raise ServiceError(
+                code="invalid_arguments",
+                message=f"'{key}' must be one of {','.join(OPPORTUNITY_TOPICS)}.",
+            )
+        return topic
+
+    def _required_topic_universe(self, arguments: dict[str, Any], key: str) -> list[str]:
+        raw_value = arguments.get(key)
+        if not isinstance(raw_value, list) or not raw_value:
+            raise ServiceError(code="invalid_arguments", message=f"'{key}' must be a non-empty list of topics.")
+        topics: list[str] = []
+        seen: set[str] = set()
+        for item in raw_value:
+            if not isinstance(item, str) or not item.strip():
+                raise ServiceError(code="invalid_arguments", message=f"'{key}' must contain non-empty strings.")
+            topic = item.strip()
+            if topic not in OPPORTUNITY_TOPICS:
+                raise ServiceError(
+                    code="invalid_arguments",
+                    message=f"'{key}' values must be from {','.join(OPPORTUNITY_TOPICS)}.",
+                )
+            if topic in seen:
+                continue
+            seen.add(topic)
+            topics.append(topic)
+        if not topics:
+            raise ServiceError(code="invalid_arguments", message=f"'{key}' must include at least one topic.")
+        return topics
 
     def _row_to_dict(self, row: Mapping[str, Any]) -> dict[str, Any]:
         payload: dict[str, Any] = {}

@@ -2,6 +2,10 @@
 
 ## HTTP Routes
 
+Opportunity Memo v1 note:
+- no new HTTP route is added for v1
+- primary entrypoint is CLI (`python -m app.jobs.run_opportunity_memo ...`)
+
 ### `GET /health`
 
 - Response: `{"status":"ok"}`
@@ -99,8 +103,16 @@ Primary job entrypoints:
 - `python -m app.jobs.run_deep_enrichment`
 - `python -m app.jobs.run_digest`
 - `python -m app.jobs.run_theme_batch --theme energy_to_agri_inputs --cadence daily`
+- `python -m app.jobs.run_opportunity_memo --start <iso> --end <iso> [--topic <topic>]`
+- `python -m app.jobs.adopt_opportunity_memo_schema`
 - `python -m app.jobs.inspect_pipeline --limit 20`
 - `python -m app.jobs.test_openai_extract`
+
+DB MCP read-model tools (Opportunity Memo v1):
+- `rank_topic_opportunities`
+- `build_opportunity_memo_input`
+- `get_topic_timeline`
+- `get_topic_driver_pack`
 
 Listener:
 - `python -m listener.telegram_listener`

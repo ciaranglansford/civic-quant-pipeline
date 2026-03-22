@@ -8,6 +8,8 @@
 | Deep enrichment | `python -m app.jobs.run_deep_enrichment` | Materializes Pass B `deep_enrich` outputs for selected candidates. |
 | Digest | `python -m app.jobs.run_digest` | Builds canonical digest artifacts and attempts destination publish. |
 | Theme batch | `python -m app.jobs.run_theme_batch --theme energy_to_agri_inputs --cadence daily` | Runs deterministic thematic batch and persists run/evidence/assessment/card/brief artifacts. |
+| Opportunity memo | `python -m app.jobs.run_opportunity_memo --start <iso> --end <iso> [--topic <topic>]` | Runs one on-demand single-topic memo with deterministic selection/input, persistence, and Telegram delivery attempt. |
+| Opportunity memo schema adopt | `python -m app.jobs.adopt_opportunity_memo_schema` | Ensures additive opportunity memo v1 tables exist. |
 | Pipeline inspect | `python -m app.jobs.inspect_pipeline --limit 20` | Prints recent pipeline lineage. |
 
 See `app/jobs/README.md` for the complete list (including schema adoption/reset utilities).
@@ -20,10 +22,13 @@ See `app/jobs/README.md` for the complete list (including schema adoption/reset 
 - Theme batch:
   - daily run once/day
   - weekly run once/week
+- Opportunity memo:
+  - on-demand only in v1 (no default scheduler entry)
 
 ## Important Invariants
 
 - Digest artifact must be persisted before publish attempt.
+- Opportunity memo artifact must be persisted before delivery attempt.
 - Phase2 and deep enrichment each use `processing_locks` to avoid overlapping runs.
 - Phase2 admin trigger requires `PHASE2_ADMIN_TOKEN` and `x-admin-token` header.
 

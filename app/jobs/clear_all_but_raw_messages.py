@@ -15,6 +15,11 @@ logger = logging.getLogger("civicquant.reset")
 
 TABLES_TO_CLEAR_IN_ORDER = [
     "event_messages",
+    "opportunity_memo_deliveries",
+    "opportunity_memo_external_sources",
+    "opportunity_memo_input_events",
+    "opportunity_memo_artifacts",
+    "opportunity_memo_runs",
     "thesis_cards",
     "theme_opportunity_assessments",
     "theme_brief_artifacts",

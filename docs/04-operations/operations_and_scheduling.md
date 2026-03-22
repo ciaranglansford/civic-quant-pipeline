@@ -13,6 +13,7 @@ Primary local runbook for executing the wire-bulletin pipeline end-to-end and va
 - Phase2 extraction: `python -m app.jobs.run_phase2_extraction`
 - Reporting digest (canonical pipeline): `python -m app.jobs.run_digest`
 - Theme batch thesis POC: `python -m app.jobs.run_theme_batch --theme energy_to_agri_inputs --cadence daily`
+- Opportunity memo (on-demand): `python -m app.jobs.run_opportunity_memo --start <iso> --end <iso> [--topic <topic>]`
 
 ## Digest Pipeline Invariant
 
@@ -27,6 +28,21 @@ Digest composition details:
 - deterministic selection and pre-dedupe happen before synthesis
 - LLM synthesis is optional and guarded by strict validation
 - deterministic fallback is used on disabled/invalid/error cases
+
+## Opportunity Memo v1 Invariants
+
+- CLI-first on-demand workflow (no new HTTP endpoint in v1).
+- One run produces at most one memo for one topic.
+- Internal memo input is derived from event-layer data only (not `raw_messages`).
+- Deterministic topic mapping precedence is fixed:
+  - `event_tags`
+  - `event_relations`
+  - latest extraction canonical payload
+  - no match
+- Memo writer evidence is limited to:
+  - deterministic internal event evidence
+  - normalized external evidence sources
+- Memo artifact persistence occurs before Telegram delivery attempt.
 
 ## Schema Adoption (Digest Refactor)
 
@@ -52,6 +68,18 @@ Digest composition details:
   - disable theme batch job/admin endpoints,
   - optionally clear/drop only theme tables,
   - existing ingest/extraction/triage/event/digest flows remain unchanged.
+
+## Schema Adoption (Opportunity Memo v1 Additions)
+
+- Opportunity memo schema is additive and non-destructive.
+- Adoption command:
+  - `python -m app.jobs.adopt_opportunity_memo_schema`
+- This command ensures tables exist:
+  - `opportunity_memo_runs`
+  - `opportunity_memo_artifacts`
+  - `opportunity_memo_input_events`
+  - `opportunity_memo_external_sources`
+  - `opportunity_memo_deliveries`
 
 ## Developer Run Sequence (Local)
 
@@ -94,13 +122,23 @@ Digest composition details:
   - per-destination publish outcomes in `published_posts`
   - digest publish/skip/retry logs per destination
 
-6. Validation checks
+6. Run opportunity memo (on-demand)
+- Command:
+  - `python -m app.jobs.run_opportunity_memo --start 2026-03-15T00:00:00Z --end 2026-03-22T00:00:00Z`
+  - optional manual topic override:
+    - `python -m app.jobs.run_opportunity_memo --start ... --end ... --topic natural_gas`
+- Expected outputs:
+  - either clean no-op status `no_topic_found` with no publish attempt
+  - or one persisted memo artifact and one Telegram delivery attempt with recorded outcome
+
+7. Validation checks
 - Verify stage outputs in DB:
   - Stage 1: `raw_messages`
   - Stage 3: `extractions`
   - Stage 4: `routing_decisions`
   - Stage 5: `events`, `event_messages`
   - Stage 8: `digest_artifacts`, `published_posts`
+  - Opportunity memo: `opportunity_memo_runs`, `opportunity_memo_artifacts`, `opportunity_memo_input_events`, `opportunity_memo_external_sources`, `opportunity_memo_deliveries`
   - Theme batch: `theme_runs`, `event_theme_evidence`, `theme_opportunity_assessments`, `thesis_cards`, `theme_brief_artifacts`
 
 ## When to Run What
@@ -108,11 +146,12 @@ Digest composition details:
 - Run listener when validating capture behavior against live/burst bulletin feeds.
 - Run phase2 extraction when validating claim extraction, deterministic triage, and event clustering.
 - Run digest when validating event-level reporting outputs.
+- Run opportunity memo for on-demand single-topic client memo generation from a custom window.
 
 ## Data Lifecycle + Reprocess Safety
 
 - Raw data (`raw_messages`) is immutable source-of-record.
-- Derived data (`extractions`, `routing_decisions`, `events`, `event_messages`, `digest_artifacts`, `published_posts`, processing state) is reprocessable.
+- Derived data (`extractions`, `routing_decisions`, `events`, `event_messages`, `digest_artifacts`, `published_posts`, `opportunity_memo_*`, processing state) is reprocessable.
 
 ### Reprocess Commands
 
@@ -141,6 +180,10 @@ Use preserve-raw reprocess for prompt/routing/event-logic iteration. Use full re
   - weekly: once per week
 - Example:
   - `0 6 * * * python -m app.jobs.run_theme_batch --theme energy_to_agri_inputs --cadence daily`
+
+### Opportunity Memo Cadence
+- On-demand only in v1.
+- No default scheduler entry is recommended.
 
 ### Digest Rerun / Idempotency Behavior
 - Canonical artifact is persisted before destination publish attempts.

@@ -31,6 +31,16 @@ class Settings(BaseSettings):
     digest_top_developments_limit: int = 3
     digest_section_bullet_limit: int = 6
 
+    # Opportunity memo (on-demand)
+    opportunity_memo_topic_score_threshold: float = 0.58
+    opportunity_memo_min_supporting_events: int = 3
+    opportunity_memo_min_external_sources: int = 3
+    opportunity_memo_external_source_limit: int = 8
+    opportunity_memo_research_model: str | None = None
+    opportunity_memo_writer_model: str | None = None
+    opportunity_memo_openai_timeout_seconds: float = 45.0
+    opportunity_memo_openai_max_retries: int = 2
+
     # Phase 2 extraction
     phase2_extraction_enabled: bool = False
     phase2_batch_size: int = 50

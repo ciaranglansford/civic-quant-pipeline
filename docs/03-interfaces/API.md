@@ -6,6 +6,11 @@
 
 This API supports wire-bulletin ingestion and operational processing jobs.
 
+Opportunity Memo v1 note:
+- no new HTTP route is added for v1
+- primary interface is CLI job execution
+- memo-oriented read models are exposed through DB MCP read-only tools
+
 ## Current API Surface vs Internal Pipeline Stages
 
 - Exposed HTTP endpoints are focused on ingest and operational triggering.
@@ -121,6 +126,8 @@ These are internal/debug endpoints by convention in this pass (no auth/user syst
 - `python -m app.jobs.run_phase2_extraction`
 - `python -m app.jobs.run_deep_enrichment`
 - `python -m app.jobs.run_digest` (deterministic selection/state + optional LLM synthesis with strict validation/fallback)
+- `python -m app.jobs.run_opportunity_memo --start <iso> --end <iso> [--topic <topic>]` (on-demand single-topic memo)
+- `python -m app.jobs.adopt_opportunity_memo_schema` (additive schema adoption for memo tables)
 - `python -m app.jobs.test_openai_extract`
 - `python -m app.jobs.reset_dev_schema`
 - `python -m app.jobs.clear_all_but_raw_messages`
@@ -131,6 +138,18 @@ Runtime ownership note:
 - phase2 orchestration entrypoint is `app/workflows/phase2_pipeline.py`
 - business rules are context-owned in `app/contexts/*`
 - digest/report semantics are canonical in `app/digest/*`
+- opportunity memo orchestration entrypoint is `app/workflows/opportunity_memo_pipeline.py`
+
+### DB MCP Read-Model Tools (Opportunity Memo v1)
+
+Added read-only tools:
+- `rank_topic_opportunities`
+- `build_opportunity_memo_input`
+- `get_topic_timeline`
+- `get_topic_driver_pack`
+
+Explicitly deferred in v1:
+- `get_previous_memo_context`
 
 ### Listener Runtime
 

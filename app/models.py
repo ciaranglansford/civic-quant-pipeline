@@ -576,3 +576,133 @@ class ThemeBriefArtifact(Base):
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
 
     theme_run = relationship("ThemeRun", back_populates="brief_artifact")
+
+
+class OpportunityMemoRun(Base):
+    __tablename__ = "opportunity_memo_runs"
+    __table_args__ = (
+        Index(
+            "ix_opportunity_memo_runs_topic_window_created",
+            "selected_topic",
+            "window_start_utc",
+            "window_end_utc",
+            "created_at",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True)
+    run_key = Column(String(64), nullable=False, unique=True, index=True)
+    window_start_utc = Column(DateTime, nullable=False, index=True)
+    window_end_utc = Column(DateTime, nullable=False, index=True)
+    requested_topic = Column(String(64), nullable=True, index=True)
+    selected_topic = Column(String(64), nullable=True, index=True)
+    selection_mode = Column(String(16), nullable=False, default="auto")
+    topic_score = Column(Float, nullable=True)
+    selected_primary_driver_key = Column(String(64), nullable=True)
+    selected_primary_driver_score = Column(Float, nullable=True)
+    status = Column(String(32), nullable=False, default="running", index=True)
+    error_message = Column(Text, nullable=True)
+    selection_diagnostics_json = Column(JSONB_COMPAT, nullable=False, default=dict)
+    validation_errors_json = Column(JSONB_COMPAT, nullable=False, default=list)
+    started_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+
+    artifact = relationship("OpportunityMemoArtifact", back_populates="run", uselist=False)
+    input_events = relationship("OpportunityMemoInputEvent", back_populates="run")
+
+
+class OpportunityMemoArtifact(Base):
+    __tablename__ = "opportunity_memo_artifacts"
+    __table_args__ = (
+        UniqueConstraint("run_id", name="uq_opportunity_memo_artifacts_run"),
+        Index("ix_opportunity_memo_artifacts_topic_created", "topic", "created_at"),
+        Index("ix_opportunity_memo_artifacts_input_hash", "input_hash"),
+        Index("ix_opportunity_memo_artifacts_canonical_hash", "canonical_hash"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    run_id = Column(Integer, ForeignKey("opportunity_memo_runs.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    window_start_utc = Column(DateTime, nullable=False, index=True)
+    window_end_utc = Column(DateTime, nullable=False, index=True)
+    topic = Column(String(64), nullable=False, index=True)
+    input_hash = Column(String(128), nullable=False)
+    canonical_hash = Column(String(128), nullable=False)
+    memo_json = Column(JSONB_COMPAT, nullable=False, default=dict)
+    traceability_json = Column(JSONB_COMPAT, nullable=False, default=dict)
+    canonical_text = Column(Text, nullable=False)
+    status = Column(String(32), nullable=False, default="created", index=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+
+    run = relationship("OpportunityMemoRun", back_populates="artifact")
+    input_events = relationship("OpportunityMemoInputEvent", back_populates="artifact")
+    external_sources = relationship("OpportunityMemoExternalSource", back_populates="artifact")
+    deliveries = relationship("OpportunityMemoDelivery", back_populates="artifact")
+
+
+class OpportunityMemoInputEvent(Base):
+    __tablename__ = "opportunity_memo_input_events"
+    __table_args__ = (
+        UniqueConstraint("run_id", "event_id", name="uq_opportunity_memo_input_events_run_event"),
+        Index("ix_opportunity_memo_input_events_run_position", "run_id", "position_index"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    run_id = Column(Integer, ForeignKey("opportunity_memo_runs.id", ondelete="CASCADE"), nullable=False, index=True)
+    artifact_id = Column(Integer, ForeignKey("opportunity_memo_artifacts.id", ondelete="CASCADE"), nullable=False, index=True)
+    event_id = Column(Integer, ForeignKey("events.id", ondelete="SET NULL"), nullable=True, index=True)
+    event_time = Column(DateTime, nullable=True)
+    summary = Column(Text, nullable=True)
+    impact_score = Column(Float, nullable=True)
+    position_index = Column(Integer, nullable=False, default=0)
+    driver_supporting = Column(Boolean, nullable=False, default=False)
+    mapping_diagnostics_json = Column(JSONB_COMPAT, nullable=False, default=dict)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+
+    run = relationship("OpportunityMemoRun", back_populates="input_events")
+    artifact = relationship("OpportunityMemoArtifact", back_populates="input_events")
+
+
+class OpportunityMemoExternalSource(Base):
+    __tablename__ = "opportunity_memo_external_sources"
+    __table_args__ = (
+        UniqueConstraint("artifact_id", "source_id", name="uq_opportunity_memo_external_sources_artifact_source_id"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    artifact_id = Column(Integer, ForeignKey("opportunity_memo_artifacts.id", ondelete="CASCADE"), nullable=False, index=True)
+    source_id = Column(String(64), nullable=False)
+    source_type = Column(String(32), nullable=False)
+    title = Column(Text, nullable=False)
+    publisher = Column(String(255), nullable=True)
+    retrieved_at = Column(DateTime, nullable=False)
+    query = Column(Text, nullable=False)
+    summary = Column(Text, nullable=False)
+    claim_support_tags = Column(JSONB_COMPAT, nullable=False, default=list)
+    url = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+
+    artifact = relationship("OpportunityMemoArtifact", back_populates="external_sources")
+
+
+class OpportunityMemoDelivery(Base):
+    __tablename__ = "opportunity_memo_deliveries"
+    __table_args__ = (
+        UniqueConstraint("artifact_id", "destination", name="uq_opportunity_memo_deliveries_artifact_destination"),
+        Index("ix_opportunity_memo_deliveries_destination_status", "destination", "status"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    artifact_id = Column(Integer, ForeignKey("opportunity_memo_artifacts.id", ondelete="CASCADE"), nullable=False, index=True)
+    destination = Column(String(64), nullable=False)
+    status = Column(String(32), nullable=False, default="failed")
+    attempted_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    published_at = Column(DateTime, nullable=True, index=True)
+    content = Column(Text, nullable=False)
+    content_hash = Column(String(128), nullable=False, index=True)
+    external_ref = Column(String(255), nullable=True)
+    last_error = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+
+    artifact = relationship("OpportunityMemoArtifact", back_populates="deliveries")

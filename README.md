@@ -14,6 +14,7 @@ Truth model:
 - Selective deep enrichment workflow (`app/workflows/deep_enrichment_pipeline.py`)
 - Canonical digest workflow (`app/digest/*`)
 - Deterministic theme batch workflow (`app/workflows/theme_batch_pipeline.py`)
+- Opportunity memo workflow (`app/workflows/opportunity_memo_pipeline.py`)
 
 ## Quick Start
 
@@ -43,6 +44,9 @@ python -m app.jobs.run_phase2_extraction
 python -m app.jobs.run_deep_enrichment
 python -m app.jobs.run_digest
 python -m app.jobs.run_theme_batch --theme energy_to_agri_inputs --cadence daily
+python -m app.jobs.adopt_opportunity_memo_schema
+python -m app.jobs.run_opportunity_memo --start 2026-03-15T00:00:00Z --end 2026-03-22T00:00:00Z
+python -m app.jobs.run_opportunity_memo --start 2026-03-15T00:00:00Z --end 2026-03-22T00:00:00Z --topic natural_gas
 ```
 
 6. Optional listener:
@@ -75,6 +79,7 @@ Canonical docs:
 - `docs/data-model.md`
 - `docs/operations.md`
 - `docs/troubleshooting.md`
+- `docs/opportunity_memo.md`
 
 Historical planning/audit artifacts are retained in `docs/05-audit/`, `docs/feed-api/`, `plans/`, and `user-stories/`.
 

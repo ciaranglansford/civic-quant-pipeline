@@ -29,12 +29,14 @@ python -m app.jobs.run_phase2_extraction
 | `run_deep_enrichment` | Processes deterministic `deep_enrich` candidates and stores narrow Pass B structured outputs. | `python -m app.jobs.run_deep_enrichment` |
 | `run_digest` | Builds and publishes digest output from recent events and records publication. | `python -m app.jobs.run_digest` |
 | `run_theme_batch` | Runs one deterministic theme batch window and persists run/evidence/assessment/card/brief rows. | `python -m app.jobs.run_theme_batch --theme energy_to_agri_inputs --cadence daily` |
+| `run_opportunity_memo` | Runs one on-demand, single-topic opportunity memo workflow and records persistence + delivery outcome. | `python -m app.jobs.run_opportunity_memo --start 2026-03-15T00:00:00Z --end 2026-03-22T00:00:00Z [--topic natural_gas]` |
 | `test_openai_extract` | Runs a single extraction smoke test against OpenAI + schema validation (no DB writes). | `python -m app.jobs.test_openai_extract` |
 | `clear_all_but_raw_messages` | Deletes derived pipeline tables while preserving `raw_messages`. | `CONFIRM_CLEAR_NON_RAW=true python -m app.jobs.clear_all_but_raw_messages` |
 | `reset_dev_schema` | Drops and recreates all tables from SQLAlchemy models (destructive). | `python -m app.jobs.reset_dev_schema` |
 | `adopt_stability_contracts` | Backfills replay/identity hashes, audits duplicate event identities, and optionally merges exact duplicates / applies unique indexes. | `python -m app.jobs.adopt_stability_contracts` |
 | `adopt_theme_batch_schema` | Non-destructively ensures additive theme batch schema tables and indexes. | `python -m app.jobs.adopt_theme_batch_schema` |
 | `adopt_structured_event_schema` | Non-destructively ensures additive structured-event tables/indexes and route column adoption. | `python -m app.jobs.adopt_structured_event_schema` |
+| `adopt_opportunity_memo_schema` | Non-destructively ensures additive Opportunity Memo v1 tables exist. | `python -m app.jobs.adopt_opportunity_memo_schema` |
 
 ## Before/After by Job
 
@@ -86,6 +88,22 @@ python -m app.jobs.run_phase2_extraction
   - `thesis_cards` persists emitted/suppressed/draft statuses.
   - `theme_brief_artifacts` persists one brief row per run.
 
+### `run_opportunity_memo`
+
+- Before:
+  - Event layer has relevant rows in `events` (windowed by `--start`/`--end`).
+  - `OPENAI_API_KEY` is configured for default research/writer providers (unless test doubles are used).
+  - Topic override is optional (`--topic` from constrained topic set).
+- After:
+  - `opportunity_memo_runs` records explicit state (`running`, `no_topic_found`, `validation_failed`, `completed`, or `delivery_failed`).
+  - Successful memo builds persist:
+    - `opportunity_memo_artifacts`
+    - `opportunity_memo_input_events`
+    - `opportunity_memo_external_sources`
+    - `opportunity_memo_deliveries`
+  - Artifact persistence occurs before Telegram publish attempt.
+  - Delivery failure does not remove persisted artifact; outcome is recorded as `delivery_failed`.
+
 ### `test_openai_extract`
 
 - Before:
@@ -101,7 +119,7 @@ python -m app.jobs.run_phase2_extraction
   - You want to reprocess from existing raw history.
   - `CONFIRM_CLEAR_NON_RAW=true` is set.
 - After:
-  - Cleared tables: `event_messages`, `thesis_cards`, `theme_opportunity_assessments`, `theme_brief_artifacts`, `event_theme_evidence`, `theme_runs`, `published_posts`, `digest_artifacts`, `events`, `routing_decisions`, `extractions`, `message_processing_states`, `processing_locks`.
+  - Cleared tables: `event_messages`, `opportunity_memo_deliveries`, `opportunity_memo_external_sources`, `opportunity_memo_input_events`, `opportunity_memo_artifacts`, `opportunity_memo_runs`, `thesis_cards`, `theme_opportunity_assessments`, `theme_brief_artifacts`, `event_theme_evidence`, `theme_runs`, `published_posts`, `digest_artifacts`, `events`, `routing_decisions`, `extractions`, `message_processing_states`, `processing_locks`.
   - `raw_messages` remains unchanged.
   - On SQLite, ID sequences are reset where possible.
 
@@ -123,6 +141,18 @@ python -m app.jobs.run_phase2_extraction
   - duplicate identity groups audited (exact vs conflict)
   - optional exact duplicate merge (`--merge-exact`)
   - optional unique index apply (`--apply-unique-indexes`) once duplicates are cleaned
+
+### `adopt_opportunity_memo_schema`
+
+- Before:
+  - Existing DB may not yet include Opportunity Memo v1 tables.
+- After:
+  - Additive tables are present:
+    - `opportunity_memo_runs`
+    - `opportunity_memo_artifacts`
+    - `opportunity_memo_input_events`
+    - `opportunity_memo_external_sources`
+    - `opportunity_memo_deliveries`
 
 ## Suggested Order
 

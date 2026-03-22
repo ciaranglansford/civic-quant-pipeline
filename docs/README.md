@@ -13,6 +13,7 @@ This directory contains source-of-truth operational and architecture docs for th
 7. [`operations.md`](./operations.md)
 8. [`troubleshooting.md`](./troubleshooting.md)
 9. [`glossary.md`](./glossary.md)
+10. [`opportunity_memo.md`](./opportunity_memo.md)
 
 ## Canonical Docs
 
@@ -25,6 +26,7 @@ This directory contains source-of-truth operational and architecture docs for th
 - [`operations.md`](./operations.md): job runbook, scheduling, and safety rules.
 - [`troubleshooting.md`](./troubleshooting.md): common failure modes and checks.
 - [`glossary.md`](./glossary.md): domain terminology.
+- [`opportunity_memo.md`](./opportunity_memo.md): Opportunity Memo v1 workflow, contracts, validation, and operations.
 - [`../app/jobs/README.md`](../app/jobs/README.md): full job matrix and command-specific notes.
 
 ## Historical and Planning Artifacts
